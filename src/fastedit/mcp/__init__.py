@@ -1,0 +1,1 @@
+"""FastEdit MCP server package."""
