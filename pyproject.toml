@@ -1,9 +1,10 @@
 [project]
-name = "fastedit"
-version = "0.1.0"
+name = "fastedits"
+version = "0.1.1"
 description = "AST-aware code editing — 45% fewer output tokens than unified diffs"
 requires-python = ">=3.11"
 license = {text = "MIT"}
+readme = "README.md"
 dependencies = [
     "tree-sitter>=0.23.0",
     "tree-sitter-python>=0.23.0",

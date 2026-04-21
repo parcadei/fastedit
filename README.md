@@ -56,20 +56,20 @@ When deterministic matching can't resolve the edit (indent structure changes, fu
 ## Install
 
 ```bash
-pip install fastedit
+pip install fastedits
 fastedit pull          # downloads the 1.7B model (~3GB, one-time)
 ```
 
 For Apple Silicon (recommended for local use):
 ```bash
-pip install fastedit[mlx]
+pip install fastedits[mlx]
 fastedit pull
 ```
 
 For GPU servers (vLLM, TGI) or local servers (LM Studio, llama.cpp, Ollama):
 ```bash
 # Optional: install vLLM for GPU serving
-pip install fastedit[vllm]
+pip install fastedits[vllm]
 
 # Or point at any OpenAI-compatible server:
 FASTEDIT_BACKEND=llm FASTEDIT_LLM_API_BASE=http://localhost:1234/v1 fastedit edit ...
@@ -116,7 +116,7 @@ fastedit diff src/app.py
 FastEdit runs as an MCP server for AI agents (Claude Code, Cursor, etc.):
 
 ```bash
-pip install fastedit[mcp]
+pip install fastedits[mcp]
 python -m fastedit.mcp_server
 ```
 
@@ -153,7 +153,7 @@ Add to `.claude/settings.json` or your project `.claude.json`:
 }
 ```
 
-`fastedit-hook` is installed automatically with `pip install fastedit` — no paths, no `python3` vs `python` issues.
+`fastedit-hook` is installed automatically with `pip install fastedits` — no paths, no `python3` vs `python` issues.
 
 ## The model
 

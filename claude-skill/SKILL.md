@@ -17,13 +17,13 @@ Ask user: **MCP server** (recommended — tools appear in Claude Code) or **CLI*
 
 ```bash
 # Mac (Apple Silicon)
-pip install fastedit[mlx]
+pip install fastedits[mlx]
 
 # Mac + MCP server
-pip install fastedit[mlx,mcp]
+pip install fastedits[mlx,mcp]
 
 # Linux GPU server
-pip install fastedit[vllm]
+pip install fastedits[vllm]
 ```
 
 ### Pull model (~3GB, one-time)
