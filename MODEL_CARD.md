@@ -129,8 +129,8 @@ If you want to use the model directly (without the toolkit), you need to:
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # BF16 (GPU / fine-tuning)
-model = AutoModelForCausalLM.from_pretrained("continuous/FastEdit", subfolder="bf16", torch_dtype="auto")
-tokenizer = AutoTokenizer.from_pretrained("continuous/FastEdit", subfolder="bf16")
+model = AutoModelForCausalLM.from_pretrained("continuous-lab/FastEdit", subfolder="bf16", torch_dtype="auto")
+tokenizer = AutoTokenizer.from_pretrained("continuous-lab/FastEdit", subfolder="bf16")
 
 messages = [
     {"role": "system", "content": "You are a coding assistant that helps merge code updates, ensuring every modification is fully integrated. /no_think"},

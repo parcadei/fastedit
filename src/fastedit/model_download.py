@@ -14,7 +14,7 @@ from pathlib import Path
 logger = logging.getLogger("fastedit.model_download")
 
 # HuggingFace repo — single repo, multiple subfolders
-HF_REPO = "continuous/FastEdit"
+HF_REPO = "continuous-lab/FastEdit"
 
 MODELS = {
     "mlx-8bit": "mlx-8bit",
