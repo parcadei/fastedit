@@ -64,6 +64,8 @@ When deterministic matching can't resolve the edit (indent structure changes, fu
 
 ## Install
 
+**Prerequisite:** [tldr](https://github.com/parcadei/tldr-code) must be on PATH (used for AST analysis).
+
 ```bash
 pip install fastedits
 fastedit pull          # downloads the 1.7B model (~3GB, one-time)
