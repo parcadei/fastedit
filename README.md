@@ -1,6 +1,15 @@
 # FastEdit
 
-AST-aware code editing powered by a fine-tuned 1.7B small language model.
+AST-aware code editing powered by a fine-tuned 1.7B model. Diffs, SEARCH/REPLACE, and apply_patch all force the agent to repeat back old code to say *where* the edit goes. FastEdit uses tree-sitter to find the target by name — the agent writes only the change plus a line or two of context.
+
+### Agent output token savings
+
+| Model | Edit tool tokens | FastEdit tokens | Saved | Reduction |
+|-------|-----------------|-----------------|-------|-----------|
+| GPT-5.4 | 3,404 | 1,557 | 1,847 | **54.3%** |
+| Opus 4.6 | 4,286 | 2,291 | 1,995 | **46.5%** |
+| Opus 4.7 | 4,771 | 2,645 | 2,126 | **44.6%** |
+| Grok 4.20 | 2,946 | 1,661 | 1,285 | **43.6%** |
 
 ## The problem
 
