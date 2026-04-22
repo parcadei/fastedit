@@ -20,10 +20,22 @@ from .server import _atomic_write, mcp
         "the ~35-line region around your change, not the whole function. "
         "Inserting new code (instant): after='existing_func', snippet is the new code. "
         "Replacing a whole function: replace='func_name', snippet is the full replacement. "
-        "Without replace/after, the model processes the entire file (slow)."
+        "Without replace/after, the model processes the entire file (slow). "
+        "preserve_siblings=True (with replace='ClassName'): edit a subset of a class's "
+        "members (a field, one method, etc.) without enumerating siblings you want to "
+        "keep. Your snippet only needs to contain the class shell + the members you're "
+        "changing/adding; unmentioned sibling methods/members are carried over from the "
+        "original. Use this when a surgical change spans only a fraction of a class. "
+        "Zero model tokens — pure AST splice."
     ),
 )
-async def fast_edit(file_path: str, edit_snippet: str, after: str = "", replace: str = "") -> str:
+async def fast_edit(
+    file_path: str,
+    edit_snippet: str,
+    after: str = "",
+    replace: str = "",
+    preserve_siblings: bool = False,
+) -> str:
     """Apply an edit snippet to a file using the local FastEdit model."""
     ctx = mcp.get_context()
     lc = ctx.request_context.lifespan_context
@@ -37,7 +49,13 @@ async def fast_edit(file_path: str, edit_snippet: str, after: str = "", replace:
     if not path.exists():
         return f"Error: file not found: {file_path}"
 
-    needs_model = not (after and not replace)  # after= is pure text insert, no model
+    # Three zero-model paths: `after=` (pure insert), and `replace=` with
+    # `preserve_siblings=True` (pure AST splice). Everything else may reach
+    # the model after the deterministic fast paths.
+    needs_model = not (
+        (after and not replace)
+        or (replace and preserve_siblings)
+    )
 
     async with file_locks[file_path]:
         original_code = path.read_text(encoding="utf-8", errors="replace")
@@ -64,6 +82,7 @@ async def fast_edit(file_path: str, edit_snippet: str, after: str = "", replace:
                             language=language,
                             after=after or None,
                             replace=replace or None,
+                            preserve_siblings=preserve_siblings,
                         )
                 else:
                     result = await asyncio.to_thread(
@@ -75,9 +94,11 @@ async def fast_edit(file_path: str, edit_snippet: str, after: str = "", replace:
                         language=language,
                         after=after or None,
                         replace=replace or None,
+                        preserve_siblings=preserve_siblings,
                     )
             else:
-                # after= fast path: 0 model tokens, no engine needed
+                # Zero-model fast path (after= insert, or replace= with
+                # preserve_siblings=True): no engine needed.
                 result = chunked_merge(
                     original_code=original_code,
                     snippet=edit_snippet,
@@ -86,6 +107,7 @@ async def fast_edit(file_path: str, edit_snippet: str, after: str = "", replace:
                     language=language,
                     after=after or None,
                     replace=replace or None,
+                    preserve_siblings=preserve_siblings,
                 )
         except ValueError as e:
             return f"Error: {e}"
@@ -136,9 +158,12 @@ async def fast_edit(file_path: str, edit_snippet: str, after: str = "", replace:
 @mcp.tool(
     description=(
         "Apply multiple edits to one file in a single call. `edits` is a JSON list "
-        "of objects with `snippet` and optional `after`/`replace` keys. "
-        "Edits are applied sequentially — each sees the result of the previous. "
-        "One round-trip instead of N separate fast_edit calls."
+        "of objects with `snippet` and optional `after`/`replace`/`preserve_siblings` "
+        "keys. Edits are applied sequentially — each sees the result of the previous. "
+        "One round-trip instead of N separate fast_edit calls. "
+        "Per-edit `preserve_siblings: true` (with `replace: 'ClassName'`) carries over "
+        "any named sibling members (methods, nested classes) that exist in the original "
+        "class but aren't mentioned in that edit's snippet — zero model tokens."
     ),
 )
 async def fast_batch_edit(file_path: str, edits: str) -> str:
@@ -171,6 +196,7 @@ async def fast_batch_edit(file_path: str, edits: str) -> str:
             snippet=entry["snippet"],
             after=entry.get("after") or None,
             replace=entry.get("replace") or None,
+            preserve_siblings=bool(entry.get("preserve_siblings", False)),
         ))
 
     async with file_locks[file_path]:
@@ -281,6 +307,7 @@ async def fast_multi_edit(file_edits: str) -> str:
                 snippet=entry["snippet"],
                 after=entry.get("after") or None,
                 replace=entry.get("replace") or None,
+                preserve_siblings=bool(entry.get("preserve_siblings", False)),
             ))
 
         # Lock each file individually as we process it sequentially
