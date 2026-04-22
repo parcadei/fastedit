@@ -1,0 +1,52 @@
+module: note_api
+packages:
+  - bottle
+  - dataclasses
+  - json
+
+entity:
+  name: Note
+  fields:
+    title: str
+    body: str
+    pinned: bool
+
+context:
+  name: app
+  type: bottle.Bottle
+  init: "bottle.Bottle()"
+  test_setup: "webtest.TestApp(app)"
+  test_debug:
+    - "app.catchall = False"
+  route_decorator: '@app.route("{path}", method="{METHOD}")'
+  test_send_json: "client.{method}_json('{path}', {data}, expect_errors=True)"
+  test_send: "client.{method}('{path}', expect_errors=True)"
+  test_get_json: "resp.json"
+  test_status: "resp.status_int"
+  todo_hints:
+    parse_body: "bottle.request.json"
+    return_entity: "bottle.HTTPResponse(json.dumps(entity), content_type='application/json')"
+    return_list: "as bottle.HTTPResponse(json.dumps(data), content_type='application/json')"
+    set_status: "return bottle.HTTPResponse(json.dumps(entity), status={status}, content_type='application/json')"
+    return_dict: "bottle.HTTPResponse(json.dumps(stats_dict), content_type='application/json')"
+    query_source: "bottle.request.query"
+    not_found: "bottle.abort(404, 'Not found')"
+
+store:
+  type: dict
+  name: notes
+  key: {name: id, type: int, auto: true}
+
+operations:
+  - name: list
+    route: {method: GET, path: "/notes"}
+  - name: get
+    route: {method: GET, path: "/notes/<note_id:int>"}
+  - name: create
+    route: {method: POST, path: "/notes"}
+  - name: update
+    route: {method: PUT, path: "/notes/<note_id:int>"}
+  - name: delete
+    route: {method: DELETE, path: "/notes/<note_id:int>"}
+  - name: stats
+    route: {method: GET, path: "/notes/stats"}

@@ -1,0 +1,205 @@
+# Language configuration for FastEdit data generation
+# Maps languages to target percentages and source repositories
+# Minimum 10 repos per language for diversity
+
+languages:
+  python:
+    target_pct: 20
+    repos:
+      - https://github.com/tiangolo/fastapi
+      - https://github.com/django/django
+      - https://github.com/pallets/flask
+      - https://github.com/encode/httpx
+      - https://github.com/pydantic/pydantic
+      - https://github.com/scikit-learn/scikit-learn
+      - https://github.com/sqlalchemy/sqlalchemy
+      - https://github.com/ansible/ansible
+      - https://github.com/pallets/click
+      - https://github.com/aio-libs/aiohttp
+      - https://github.com/pandas-dev/pandas
+      - https://github.com/psf/requests
+      - https://github.com/pytorch/pytorch
+      - https://github.com/numpy/numpy
+      - https://github.com/celery/celery
+      - https://github.com/boto/boto3
+      - https://github.com/Textualize/rich
+      - https://github.com/tiangolo/typer
+      - https://github.com/psf/black
+      - https://github.com/astral-sh/ruff
+
+  typescript:
+    target_pct: 20
+    repos:
+      - https://github.com/vercel/next.js
+      - https://github.com/trpc/trpc
+      - https://github.com/prisma/prisma
+      - https://github.com/remix-run/remix
+      - https://github.com/shadcn-ui/ui
+      - https://github.com/microsoft/vscode
+      - https://github.com/typeorm/typeorm
+      - https://github.com/angular/angular
+      - https://github.com/nestjs/nest
+      - https://github.com/grafana/grafana
+
+  javascript:
+    target_pct: 10
+    repos:
+      - https://github.com/expressjs/express
+      - https://github.com/vuejs/core
+      - https://github.com/axios/axios
+      - https://github.com/webpack/webpack
+      - https://github.com/mrdoob/three.js
+      - https://github.com/d3/d3
+      - https://github.com/facebook/react
+      - https://github.com/chartjs/Chart.js
+      - https://github.com/moment/moment
+      - https://github.com/socketio/socket.io
+
+  rust:
+    target_pct: 10
+    repos:
+      - https://github.com/tokio-rs/tokio
+      - https://github.com/tokio-rs/axum
+      - https://github.com/serde-rs/serde
+      - https://github.com/clap-rs/clap
+      - https://github.com/rust-lang/rust-analyzer
+      - https://github.com/diesel-rs/diesel
+      - https://github.com/BurntSushi/ripgrep
+      - https://github.com/sharkdp/fd
+      - https://github.com/hyperium/hyper
+      - https://github.com/actix/actix-web
+      - https://github.com/denoland/deno
+      - https://github.com/servo/servo
+
+  go:
+    target_pct: 10
+    repos:
+      - https://github.com/gin-gonic/gin
+      - https://github.com/gofiber/fiber
+      - https://github.com/labstack/echo
+      - https://github.com/spf13/cobra
+      - https://github.com/kubernetes/client-go
+      - https://github.com/hashicorp/terraform
+      - https://github.com/go-gitea/gitea
+      - https://github.com/prometheus/prometheus
+      - https://github.com/etcd-io/etcd
+      - https://github.com/containerd/containerd
+
+  java:
+    target_pct: 10
+    repos:
+      - https://github.com/google/guava
+      - https://github.com/spring-projects/spring-framework
+      - https://github.com/square/okhttp
+      - https://github.com/google/gson
+      - https://github.com/apache/kafka
+      - https://github.com/square/retrofit
+      - https://github.com/netty/netty
+      - https://github.com/elastic/elasticsearch
+      - https://github.com/ReactiveX/RxJava
+      - https://github.com/apache/dubbo
+
+  c:
+    target_pct: 3
+    repos:
+      - https://github.com/redis/redis
+      - https://github.com/curl/curl
+      - https://github.com/sqlite/sqlite
+      - https://github.com/git/git
+      - https://github.com/nginx/nginx
+      - https://github.com/libuv/libuv
+      - https://github.com/systemd/systemd
+      - https://github.com/jqlang/jq
+      - https://github.com/tmux/tmux
+      - https://github.com/openssl/openssl
+
+  cpp:
+    target_pct: 3
+    repos:
+      - https://github.com/nlohmann/json
+      - https://github.com/gabime/spdlog
+      - https://github.com/google/googletest
+      - https://github.com/grpc/grpc
+      - https://github.com/protocolbuffers/protobuf
+      - https://github.com/opencv/opencv
+      - https://github.com/facebook/folly
+      - https://github.com/abseil/abseil-cpp
+      - https://github.com/fmtlib/fmt
+      - https://github.com/catchorg/Catch2
+
+  ruby:
+    target_pct: 5
+    repos:
+      - https://github.com/rails/rails
+      - https://github.com/heartcombo/devise
+      - https://github.com/ruby-grape/grape
+      - https://github.com/sinatra/sinatra
+      - https://github.com/jekyll/jekyll
+      - https://github.com/discourse/discourse
+      - https://github.com/sidekiq/sidekiq
+      - https://github.com/rubocop/rubocop
+      - https://github.com/faker-ruby/faker
+      - https://github.com/gitlabhq/gitlabhq
+
+  swift:
+    target_pct: 3
+    repos:
+      - https://github.com/vapor/vapor
+      - https://github.com/Alamofire/Alamofire
+      - https://github.com/ReactiveX/RxSwift
+      - https://github.com/realm/SwiftLint
+      - https://github.com/onevcat/Kingfisher
+      - https://github.com/kean/Nuke
+      - https://github.com/pointfreeco/swift-composable-architecture
+      - https://github.com/mozilla-mobile/firefox-ios
+      - https://github.com/kickstarter/ios-oss
+      - https://github.com/realm/realm-swift
+
+  kotlin:
+    target_pct: 3
+    repos:
+      - https://github.com/ktorio/ktor
+      - https://github.com/square/moshi
+      - https://github.com/square/okio
+      - https://github.com/JetBrains/exposed
+      - https://github.com/cashapp/sqldelight
+      - https://github.com/android/nowinandroid
+      - https://github.com/square/leakcanary
+      - https://github.com/JetBrains/kotlin
+      - https://github.com/InsertKoinIO/koin
+      - https://github.com/arrow-kt/arrow
+
+  c_sharp:
+    target_pct: 2
+    repos:
+      - https://github.com/dotnet/aspnetcore
+      - https://github.com/dotnet/runtime
+      - https://github.com/dotnet/efcore
+      - https://github.com/AutoMapper/AutoMapper
+      - https://github.com/dotnet/winforms
+      - https://github.com/mono/mono
+      - https://github.com/dotnet/roslyn
+      - https://github.com/NLog/NLog
+      - https://github.com/FluentValidation/FluentValidation
+      - https://github.com/App-vNext/Polly
+
+  php:
+    target_pct: 1
+    repos:
+      - https://github.com/laravel/framework
+      - https://github.com/symfony/symfony
+      - https://github.com/composer/composer
+      - https://github.com/PHPMailer/PHPMailer
+      - https://github.com/WordPress/wordpress-develop
+      - https://github.com/magento/magento2
+      - https://github.com/codeigniter4/CodeIgniter4
+      - https://github.com/yiisoft/yii2
+      - https://github.com/slimphp/Slim
+      - https://github.com/guzzle/guzzle
+
+# Global settings
+settings:
+  min_tokens: 100
+  max_tokens: 8000
+  examples_per_file: 1
+  target_total_examples: 50000
