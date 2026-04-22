@@ -843,3 +843,131 @@ class TestDeterministicEditEdgeCases:
         c_idx = next(i for i, ln in enumerate(lines) if "step_c()" in ln)
         end_idx = next(i for i, ln in enumerate(lines) if "end()" in ln)
         assert start_idx < a_idx < b_idx < c_idx < end_idx
+
+
+class TestDeterministicEditMarkerGapIndentAdjust:
+    """Bug 1 regression: preserved-gap lines must shift indent when a wrapper
+    (try/except, if-guard, with-block) adds indentation around existing code.
+    """
+
+    def test_wrap_block_deeper_indent_try_except(self):
+        # Wrapping body in try/except: the preserved gap must shift right
+        # one indent level (4 spaces) to remain syntactically valid inside try.
+        # We need >=2 context anchors surrounding the preserved gap with a
+        # marker between them. Outer anchors (def ..., return ...) stay at
+        # their original snippet-indent; the marker at the deeper indent
+        # signals the gap must shift.
+        original = textwrap.dedent("""\
+            def load(path):
+                opened = open_file(path)
+                data = read(opened)
+                cleaned = clean(data)
+                return cleaned
+        """)
+        # Snippet: def + try: wrapper, marker preserves body, then return at
+        # the orig indent level as a closing anchor.
+        snippet = textwrap.dedent("""\
+            def load(path):
+                try:
+                    # ... existing code ...
+                except IOError:
+                    cleaned = None
+                return cleaned""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        # The preserved gap (opened, data, cleaned) must be indented 8 spaces
+        # (was 4), to sit correctly inside the try: block.
+        assert "        opened = open_file(path)" in result
+        assert "        data = read(opened)" in result
+        assert "        cleaned = clean(data)" in result
+        # Wrapper lines present at expected indent.
+        assert "    try:" in result
+        assert "    except IOError:" in result
+        # Marker removed.
+        assert "... existing code ..." not in result
+        # Original 4-indent versions of the body should NOT appear (they got shifted).
+        result_lines = result.splitlines()
+        assert "    opened = open_file(path)" not in result_lines
+        assert "    data = read(opened)" not in result_lines
+        assert "    cleaned = clean(data)" not in result_lines
+
+    def test_add_guard_shallower_indent_no_change(self):
+        # A guard added at the SAME indent level as the anchor (no wrapping
+        # shift) should not change the preserved gap lines.
+        original = textwrap.dedent("""\
+            def process(data):
+                result = transform(data)
+                validate(result)
+                return result
+        """)
+        snippet = textwrap.dedent("""\
+            def process(data):
+                if data is None:
+                    return None
+                # ... existing code ...
+                return result""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        # Preserved lines stay at their original 4-space indent.
+        assert "    result = transform(data)" in result
+        assert "    validate(result)" in result
+
+    def test_wrap_block_preserves_blank_lines(self):
+        # Blank lines in the preserved gap must stay blank (not get indented).
+        original = textwrap.dedent("""\
+            def run():
+                setup()
+
+                work()
+                finalize()
+                return 0
+        """)
+        snippet = textwrap.dedent("""\
+            def run():
+                try:
+                    # ... existing code ...
+                except Exception:
+                    return 1
+                return 0""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        lines = result.splitlines()
+        # The blank line between setup() and work() must remain blank (empty).
+        assert "" in lines, "expected a blank line preserved in the gap"
+        # Non-blank gap lines got shifted to 8-space indent.
+        assert "        setup()" in result
+        assert "        work()" in result
+        assert "        finalize()" in result
+
+    def test_trailing_marker_wrap_block_indents_suffix(self):
+        # Same logic applies to the trailing-marker branch: when a wrapper
+        # starts at deeper indent, preserved suffix lines must also shift.
+        # Only one context anchor is needed for the trailing-marker branch when
+        # there's a second anchor elsewhere (else deterministic_edit bails).
+        # We use a 2-anchor snippet where the marker sits after the LAST ctx
+        # anchor (so trailing-section logic applies) and extends indent deeper.
+        original = textwrap.dedent("""\
+            def go():
+                prep()
+                a = compute_a()
+                b = compute_b()
+                c = compute_c()
+        """)
+        # Snippet: wrap body starting AFTER prep() in a try block.
+        # prep() + def go(): are context anchors; marker comes after prep().
+        snippet = textwrap.dedent("""\
+            def go():
+                prep()
+                try:
+                    # ... existing code ...""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        # Preserved suffix (a, b, c) must now be at 8-space indent (inside try:).
+        assert "        a = compute_a()" in result
+        assert "        b = compute_b()" in result
+        assert "        c = compute_c()" in result
+        assert "    try:" in result
+        # Original 4-indent versions of the body should NOT appear (shifted).
+        result_lines = result.splitlines()
+        assert "    a = compute_a()" not in result_lines
+        assert "    b = compute_b()" not in result_lines

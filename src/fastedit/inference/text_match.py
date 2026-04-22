@@ -247,11 +247,66 @@ def deterministic_edit(
             # New lines go at their position relative to the marker:
             #   before marker → before gap, after marker → after gap
             # Don't emit blanks here — the marker preserves original blanks.
+            #
+            # Bug 1 fix — preserved-gap indent adjust: when a wrapper block
+            # (try/except, if-guard, with-block) adds indent around existing
+            # code, the marker in the snippet sits at a deeper indent than
+            # the preserved body is at in the original. Shift gap lines by
+            # the indent delta so they sit correctly inside the wrapper.
+            marker_entry = next(e for e in section if e[0] == "marker")
+            marker_snip_indent = (
+                len(snip_raw[marker_entry[1]])
+                - len(snip_raw[marker_entry[1]].lstrip())
+            )
+            # Find the first non-blank line in the original gap to measure
+            # the body's current indent.
+            first_gap_orig_indent = None
+            for i in range(ctx_orig + 1, next_ctx_orig):
+                if orig_lines[i].strip():
+                    first_gap_orig_indent = (
+                        len(orig_lines[i]) - len(orig_lines[i].lstrip())
+                    )
+                    break
+            # Baseline offset between snippet and original at the context
+            # anchor (to cancel any uniform shift already present).
+            ctx_orig_indent = (
+                len(orig_lines[ctx_orig]) - len(orig_lines[ctx_orig].lstrip())
+            )
+            ctx_snip_indent = (
+                len(snip_raw[ctx_si]) - len(snip_raw[ctx_si].lstrip())
+            )
+            if first_gap_orig_indent is not None:
+                indent_delta = (
+                    (marker_snip_indent - ctx_snip_indent)
+                    - (first_gap_orig_indent - ctx_orig_indent)
+                )
+            else:
+                indent_delta = 0
+            # Preserve tab vs space indent char based on orig context anchor.
+            indent_char = (
+                "\t" if orig_lines[ctx_orig].startswith("\t") else " "
+            )
+
             gap_emitted = False
             for entry in section:
                 if entry[0] == "marker" and not gap_emitted:
                     for i in range(ctx_orig + 1, next_ctx_orig):
-                        result.append(orig_lines[i])
+                        gap_line = orig_lines[i]
+                        if not gap_line.strip():
+                            # Preserve blank lines as-is (no indent added).
+                            result.append(gap_line)
+                        elif indent_delta > 0:
+                            result.append(indent_char * indent_delta + gap_line)
+                        elif indent_delta < 0:
+                            # Strip up to |indent_delta| leading indent chars,
+                            # capped at the line's existing leading indent.
+                            strip = min(
+                                -indent_delta,
+                                len(gap_line) - len(gap_line.lstrip()),
+                            )
+                            result.append(gap_line[strip:])
+                        else:
+                            result.append(gap_line)
                     gap_emitted = True
                 elif entry[0] == "new":
                     adjusted = _adjust_indent(
@@ -275,9 +330,67 @@ def deterministic_edit(
     trailing = [c for c in classified if c[1] > last_ctx_si]
     suffix_emitted = False
 
+    # Bug 1 fix — compute indent delta for trailing-marker suffix (same logic
+    # as the in-section marker branch). Applies when a wrapper shifts suffix
+    # lines deeper, e.g. `try: # ... existing code ...` after the last anchor.
+    trailing_marker = next(
+        (e for e in trailing if e[0] == "marker"), None
+    )
+    if trailing_marker is not None:
+        marker_snip_indent = (
+            len(snip_raw[trailing_marker[1]])
+            - len(snip_raw[trailing_marker[1]].lstrip())
+        )
+        first_suffix_orig_indent = None
+        for i in range(last_orig + 1, len(orig_lines)):
+            if orig_lines[i].strip():
+                first_suffix_orig_indent = (
+                    len(orig_lines[i]) - len(orig_lines[i].lstrip())
+                )
+                break
+        last_ctx_orig = context_entries[-1][2]
+        ctx_orig_indent_t = (
+            len(orig_lines[last_ctx_orig])
+            - len(orig_lines[last_ctx_orig].lstrip())
+        )
+        ctx_snip_indent_t = (
+            len(snip_raw[last_ctx_si]) - len(snip_raw[last_ctx_si].lstrip())
+        )
+        if first_suffix_orig_indent is not None:
+            trailing_indent_delta = (
+                (marker_snip_indent - ctx_snip_indent_t)
+                - (first_suffix_orig_indent - ctx_orig_indent_t)
+            )
+        else:
+            trailing_indent_delta = 0
+        trailing_indent_char = (
+            "\t" if orig_lines[last_ctx_orig].startswith("\t") else " "
+        )
+    else:
+        trailing_indent_delta = 0
+        trailing_indent_char = " "
+
+    def _emit_suffix_with_indent() -> None:
+        for i in range(last_orig + 1, len(orig_lines)):
+            line = orig_lines[i]
+            if not line.strip():
+                result.append(line)
+            elif trailing_indent_delta > 0:
+                result.append(
+                    trailing_indent_char * trailing_indent_delta + line
+                )
+            elif trailing_indent_delta < 0:
+                strip = min(
+                    -trailing_indent_delta,
+                    len(line) - len(line.lstrip()),
+                )
+                result.append(line[strip:])
+            else:
+                result.append(line)
+
     for entry in trailing:
         if entry[0] == "marker" and not suffix_emitted:
-            result.extend(orig_lines[last_orig + 1:])
+            _emit_suffix_with_indent()
             suffix_emitted = True
         elif entry[0] == "new":
             adjusted = _adjust_indent(
