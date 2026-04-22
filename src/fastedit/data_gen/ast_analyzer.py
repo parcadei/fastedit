@@ -29,6 +29,7 @@ _LANGUAGE_MODULES: dict[str, str] = {
     "kotlin": "tree_sitter_kotlin",
     "c_sharp": "tree_sitter_c_sharp",
     "php": "tree_sitter_php",
+    "elixir": "tree_sitter_elixir",
 }
 
 # File extension -> language mapping
@@ -54,6 +55,8 @@ EXTENSION_TO_LANGUAGE: dict[str, str] = {
     ".kts": "kotlin",
     ".cs": "c_sharp",
     ".php": "php",
+    ".ex": "elixir",
+    ".exs": "elixir",
 }
 
 # AST node types that represent function-like constructs per language
@@ -75,6 +78,11 @@ _FUNCTION_NODE_TYPES: dict[str, set[str]] = {
     "kotlin": {"function_declaration"},
     "c_sharp": {"method_declaration", "constructor_declaration"},
     "php": {"function_definition", "method_declaration"},
+    # Elixir: `def`, `defp`, `defmacro`, `defmacrop` all parse as `call`
+    # nodes (the macros look like function invocations syntactically).
+    # We disambiguate function vs module via the call-target identifier
+    # text (see _is_elixir_function / _is_elixir_module).
+    "elixir": {"call"},
 }
 
 # AST node types that represent class-like constructs
@@ -93,6 +101,9 @@ _CLASS_NODE_TYPES: dict[str, set[str]] = {
     "kotlin": {"class_declaration", "object_declaration", "interface_declaration"},
     "c_sharp": {"class_declaration", "interface_declaration", "struct_declaration"},
     "php": {"class_declaration", "interface_declaration", "trait_declaration"},
+    # Elixir: `defmodule` also parses as a `call` node. Distinguished
+    # from `def`/`defp` by the target-identifier text.
+    "elixir": {"call"},
 }
 
 # AST node types for import statements
@@ -111,7 +122,123 @@ _IMPORT_NODE_TYPES: dict[str, set[str]] = {
     "kotlin": {"import_header"},
     "c_sharp": {"using_directive"},
     "php": {"namespace_use_declaration"},
+    # Elixir: `import`, `alias`, `require`, `use` all appear as `call`
+    # nodes with the matching target identifier. Filtered by target text.
+    "elixir": {"call"},
 }
+
+# Elixir macro-call target identifiers that mark function-like definitions.
+# `def` = public function, `defp` = private, `defmacro(p)` = macro.
+_ELIXIR_FUNCTION_TARGETS: frozenset[str] = frozenset(
+    {"def", "defp", "defmacro", "defmacrop"}
+)
+
+# Elixir macro-call target identifiers that mark module-like / protocol
+# definitions. Treated as "class-like" for the purposes of this analyzer.
+_ELIXIR_MODULE_TARGETS: frozenset[str] = frozenset(
+    {"defmodule", "defprotocol", "defimpl"}
+)
+
+# Elixir macro-call target identifiers that act as imports.
+_ELIXIR_IMPORT_TARGETS: frozenset[str] = frozenset(
+    {"import", "alias", "require", "use"}
+)
+
+
+def _elixir_call_target_text(node: tree_sitter.Node, source_bytes: bytes) -> str | None:
+    """Return the text of an Elixir `call` node's target identifier, if any.
+
+    Elixir's tree-sitter grammar models every macro invocation as a ``call``
+    node with a ``target`` field that is typically an ``identifier``. This
+    helper returns that identifier's source text, or ``None`` when the
+    node is not a ``call`` or its target is something other than a simple
+    identifier (e.g. a ``dot`` for ``IO.puts``).
+    """
+    if node.type != "call":
+        return None
+    target = node.child_by_field_name("target")
+    if target is None:
+        # Field-name may be missing in some grammar builds; the target
+        # is always the first named child of a `call` node.
+        for child in node.children:
+            if child.is_named:
+                target = child
+                break
+    if target is None or target.type != "identifier":
+        return None
+    return source_bytes[target.start_byte : target.end_byte].decode(
+        "utf-8", errors="replace"
+    )
+
+
+def _is_elixir_function_node(node: tree_sitter.Node, source_bytes: bytes) -> bool:
+    """True iff *node* is an Elixir `call` introducing a function/macro def."""
+    t = _elixir_call_target_text(node, source_bytes)
+    return t is not None and t in _ELIXIR_FUNCTION_TARGETS
+
+
+def _is_elixir_module_node(node: tree_sitter.Node, source_bytes: bytes) -> bool:
+    """True iff *node* is an Elixir `call` introducing a module/protocol."""
+    t = _elixir_call_target_text(node, source_bytes)
+    return t is not None and t in _ELIXIR_MODULE_TARGETS
+
+
+def _is_elixir_import_node(node: tree_sitter.Node, source_bytes: bytes) -> bool:
+    """True iff *node* is an Elixir `call` for import/alias/require/use."""
+    t = _elixir_call_target_text(node, source_bytes)
+    return t is not None and t in _ELIXIR_IMPORT_TARGETS
+
+
+def _elixir_definition_name(node: tree_sitter.Node, source_bytes: bytes) -> str:
+    """Extract the name of an Elixir `def*`/`defmodule` call.
+
+    Handles the two shapes we see in practice:
+
+    - ``def hello(name) do ... end``  → the first child of ``arguments``
+      is a nested ``call`` whose own target identifier holds the name.
+    - ``defp helper, do: :ok``        → the first child of ``arguments``
+      is a bare ``identifier`` holding the name.
+    - ``defmodule Foo do ... end``    → the first child of ``arguments``
+      is an ``alias`` node whose text is the module name.
+    - ``defmodule Foo.Bar do ... end``→ the ``alias`` text is dotted and
+      returned verbatim.
+
+    Returns ``"<anonymous>"`` when the shape doesn't match (e.g. a
+    parse-error tree).
+    """
+    # In tree-sitter-elixir the ``arguments`` child is not tagged with a
+    # field name in every grammar build — fall back to positional scan
+    # (it's always the first named sibling of the ``target`` identifier).
+    args = node.child_by_field_name("arguments")
+    if args is None:
+        for child in node.children:
+            if child.type == "arguments":
+                args = child
+                break
+    if args is None:
+        return "<anonymous>"
+    # First named child of `arguments` is the head of the definition.
+    for child in args.children:
+        if not child.is_named:
+            continue
+        if child.type == "call":
+            # def hello(name) — recurse one level to the inner call's target
+            inner_target = child.child_by_field_name("target")
+            if inner_target is not None:
+                return source_bytes[
+                    inner_target.start_byte : inner_target.end_byte
+                ].decode("utf-8", errors="replace")
+        if child.type in ("identifier", "alias"):
+            return source_bytes[child.start_byte : child.end_byte].decode(
+                "utf-8", errors="replace"
+            )
+        # Operator definitions e.g. ``def a + b, do: ...`` — use the
+        # operator text as the name so downstream resolvers at least see
+        # a stable key.
+        return source_bytes[child.start_byte : child.end_byte].decode(
+            "utf-8", errors="replace"
+        )
+    return "<anonymous>"
 
 
 @dataclass
@@ -206,8 +333,16 @@ def parse_code(source: str, language: str) -> tree_sitter.Tree:
     return parser.parse(source.encode("utf-8"))
 
 
-def _get_node_name(node: tree_sitter.Node, source_bytes: bytes) -> str:
+def _get_node_name(
+    node: tree_sitter.Node,
+    source_bytes: bytes,
+    language: str | None = None,
+) -> str:
     """Extract the name of a function/class/import node."""
+    # Elixir: every defining construct is a `call` — use the dedicated extractor.
+    if language == "elixir" and node.type == "call":
+        return _elixir_definition_name(node, source_bytes)
+
     # Look for an identifier child node
     for child in node.children:
         if child.type in ("identifier", "name", "property_identifier",
@@ -215,7 +350,7 @@ def _get_node_name(node: tree_sitter.Node, source_bytes: bytes) -> str:
             return source_bytes[child.start_byte:child.end_byte].decode("utf-8")
         # Python decorated_definition: dig into the inner definition
         if child.type == "function_definition" or child.type == "class_definition":
-            return _get_node_name(child, source_bytes)
+            return _get_node_name(child, source_bytes, language)
     # For imports, return the full text
     if node.type in _IMPORT_NODE_TYPES.get("python", set()) | \
                      _IMPORT_NODE_TYPES.get("javascript", set()):
@@ -224,17 +359,40 @@ def _get_node_name(node: tree_sitter.Node, source_bytes: bytes) -> str:
     return "<anonymous>"
 
 
+# Kind labels for the Elixir `call`-node filter. Keep in sync with the
+# _ELIXIR_*_TARGETS frozensets above.
+_ELIXIR_KIND_PREDICATES = {
+    "function": _is_elixir_function_node,
+    "class": _is_elixir_module_node,
+    "import": _is_elixir_import_node,
+}
+
+
 def _collect_nodes(
     node: tree_sitter.Node,
     source_bytes: bytes,
     language: str,
     target_types: set[str],
     parent_name: str | None = None,
+    elixir_kind: str | None = None,
 ) -> list[ASTNode]:
-    """Recursively collect AST nodes matching target types."""
+    """Recursively collect AST nodes matching target types.
+
+    ``elixir_kind``: one of ``"function" | "class" | "import"`` when
+    ``language == "elixir"``. Because every Elixir define is a ``call``
+    node, the caller tells us which macro family we want to harvest.
+    Ignored for every other language.
+    """
     results = []
-    if node.type in target_types:
-        name = _get_node_name(node, source_bytes)
+    type_match = node.type in target_types
+    # Elixir: narrow the `call` match to the requested macro family.
+    elixir_match = True
+    if type_match and language == "elixir" and node.type == "call":
+        pred = _ELIXIR_KIND_PREDICATES.get(elixir_kind or "")
+        elixir_match = bool(pred and pred(node, source_bytes))
+
+    if type_match and elixir_match:
+        name = _get_node_name(node, source_bytes, language)
         ast_node = ASTNode(
             node_type=node.type,
             name=name,
@@ -247,13 +405,22 @@ def _collect_nodes(
         # Collect nested functions/classes within this node
         for child in node.children:
             ast_node.children.extend(
-                _collect_nodes(child, source_bytes, language, target_types, name)
+                _collect_nodes(
+                    child, source_bytes, language, target_types, name, elixir_kind
+                )
             )
         results.append(ast_node)
     else:
         for child in node.children:
             results.extend(
-                _collect_nodes(child, source_bytes, language, target_types, parent_name)
+                _collect_nodes(
+                    child,
+                    source_bytes,
+                    language,
+                    target_types,
+                    parent_name,
+                    elixir_kind,
+                )
             )
     return results
 
@@ -284,14 +451,20 @@ def analyze_file(source: str, language: str, file_path: str = "<unknown>") -> Fi
     class_types = _CLASS_NODE_TYPES.get(language, set())
     import_types = _IMPORT_NODE_TYPES.get(language, set())
 
-    functions = _collect_nodes(root, source_bytes, language, func_types)
-    classes = _collect_nodes(root, source_bytes, language, class_types)
-    imports = _collect_nodes(root, source_bytes, language, import_types)
+    functions = _collect_nodes(
+        root, source_bytes, language, func_types, elixir_kind="function"
+    )
+    classes = _collect_nodes(
+        root, source_bytes, language, class_types, elixir_kind="class"
+    )
+    imports = _collect_nodes(
+        root, source_bytes, language, import_types, elixir_kind="import"
+    )
 
     # Top-level nodes (direct children of root)
     top_level = []
     for child in root.children:
-        name = _get_node_name(child, source_bytes)
+        name = _get_node_name(child, source_bytes, language)
         top_level.append(ASTNode(
             node_type=child.type,
             name=name,
@@ -360,7 +533,7 @@ def get_node_at_lines(
         if node_start >= start_line and node_end <= end_line:
             results.append(ASTNode(
                 node_type=node.type,
-                name=_get_node_name(node, source_bytes),
+                name=_get_node_name(node, source_bytes, language),
                 start_line=node_start,
                 end_line=node_end,
                 start_byte=node.start_byte,

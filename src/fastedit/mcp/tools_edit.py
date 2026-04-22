@@ -47,7 +47,8 @@ async def fast_edit(file_path: str, edit_snippet: str, after: str = "", replace:
             return (
                 f"Error: unsupported file type '{path.suffix}'. "
                 "FastEdit supports: .py .js .jsx .ts .tsx .rs .go .java "
-                ".c .h .cpp .cc .cxx .hpp .hh .rb .swift .kt .kts .cs .php. "
+                ".c .h .cpp .cc .cxx .hpp .hh .rb .swift .kt .kts .cs .php "
+                ".ex .exs. "
                 "Use the Edit tool for this file."
             )
 
@@ -180,7 +181,8 @@ async def fast_batch_edit(file_path: str, edits: str) -> str:
             return (
                 f"Error: unsupported file type '{path.suffix}'. "
                 "FastEdit supports: .py .js .jsx .ts .tsx .rs .go .java "
-                ".c .h .cpp .cc .cxx .hpp .hh .rb .swift .kt .kts .cs .php. "
+                ".c .h .cpp .cc .cxx .hpp .hh .rb .swift .kt .kts .cs .php "
+                ".ex .exs. "
                 "Use the Edit tool for this file."
             )
 
@@ -290,7 +292,8 @@ async def fast_multi_edit(file_edits: str) -> str:
                 return (
                     f"Error: unsupported file type '{path.suffix}' for {fp}. "
                     "FastEdit supports: .py .js .jsx .ts .tsx .rs .go .java "
-                    ".c .h .cpp .cc .cxx .hpp .hh .rb .swift .kt .kts .cs .php. "
+                    ".c .h .cpp .cc .cxx .hpp .hh .rb .swift .kt .kts .cs .php "
+                    ".ex .exs. "
                     "Use the Edit tool for this file."
                 )
 
