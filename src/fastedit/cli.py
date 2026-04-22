@@ -30,21 +30,21 @@ def _make_backend_with_overrides(args):
 
     backend_kind = getattr(args, "backend", None) or os.environ.get("FASTEDIT_BACKEND", "mlx")
 
-    if backend_kind == "llm":
-        from .inference.llm_engine import LLMEngine
+    if backend_kind == "vllm":
+        from .inference.vllm_engine import VLLMEngine
         api_base = (
             getattr(args, "api_base", None)
-            or os.environ.get("FASTEDIT_LLM_API_BASE", "http://127.0.0.1:8000/v1")
+            or os.environ.get("FASTEDIT_VLLM_API_BASE", "http://127.0.0.1:8000/v1")
         )
         model = (
             getattr(args, "api_model", None)
-            or os.environ.get("FASTEDIT_LLM_MODEL", "fastedit")
+            or os.environ.get("FASTEDIT_VLLM_MODEL", "/root/fastedit-merged")
         )
-        return backend_kind, LLMEngine(
+        return backend_kind, VLLMEngine(
             api_base=api_base,
             model=model,
-            api_key=os.environ.get("FASTEDIT_LLM_API_KEY", "not-needed"),
-            max_tokens=int(os.environ.get("FASTEDIT_LLM_MAX_TOKENS", "16384")),
+            api_key=os.environ.get("FASTEDIT_VLLM_API_KEY", "not-needed"),
+            max_tokens=int(os.environ.get("FASTEDIT_VLLM_MAX_TOKENS", "16384")),
         )
     else:
         from .inference.mlx_engine import MLXEngine
@@ -665,7 +665,7 @@ def main():
     edit_p.add_argument("--snippet", required=True, help="Edit snippet or '-' for stdin")
     edit_p.add_argument("--after", default="", help="Insert new code after this symbol")
     edit_p.add_argument("--replace", default="", help="Replace this symbol with the snippet")
-    edit_p.add_argument("--backend", choices=["mlx", "llm"], default=None)
+    edit_p.add_argument("--backend", choices=["mlx", "vllm"], default=None)
     edit_p.add_argument("--model-path", default=None, help="MLX model path (overrides FASTEDIT_MODEL_PATH)")
     edit_p.add_argument("--api-base", default=None, help="vLLM API base URL")
     edit_p.add_argument("--api-model", default=None, help="vLLM model name")
@@ -680,7 +680,7 @@ def main():
             'or {"snippet": "...", "replace": "sym"}. Use \'-\' for stdin.'
         ),
     )
-    be_p.add_argument("--backend", choices=["mlx", "llm"], default=None)
+    be_p.add_argument("--backend", choices=["mlx", "vllm"], default=None)
     be_p.add_argument("--model-path", default=None)
     be_p.add_argument("--api-base", default=None)
     be_p.add_argument("--api-model", default=None)
@@ -694,7 +694,7 @@ def main():
             'Use \'-\' for stdin.'
         ),
     )
-    me_p.add_argument("--backend", choices=["mlx", "llm"], default=None)
+    me_p.add_argument("--backend", choices=["mlx", "vllm"], default=None)
     me_p.add_argument("--model-path", default=None)
     me_p.add_argument("--api-base", default=None)
     me_p.add_argument("--api-model", default=None)
