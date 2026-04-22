@@ -254,6 +254,7 @@ def batch_chunked_merge(
                 padding=padding,
                 after=edit.after,
                 replace=edit.replace,
+                preserve_siblings=edit.preserve_siblings,
             )
             current_code = result.merged_code
             total_tokens += result.model_tokens

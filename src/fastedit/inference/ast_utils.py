@@ -48,6 +48,11 @@ class BatchEdit:
     snippet: str
     after: str | None = None
     replace: str | None = None
+    preserve_siblings: bool = False
+    """When True with `replace=ClassName`: carry over any named sibling
+    members (methods, nested classes) that exist in the original class
+    but aren't mentioned in the snippet. Lets you edit a subset of a
+    class's members without enumerating the rest. No-op without `replace`."""
 
 
 @dataclass
