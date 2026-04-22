@@ -53,20 +53,47 @@ def _adjust_indent(
     ref_snip_idx: int,
     snip_raw: list[str],
     orig_lines: list[str],
+    ref_shifted_right: bool = False,
 ) -> str:
-    """Adjust indentation of a new line relative to the nearest context anchor."""
+    """Adjust indentation of a new line relative to the nearest context anchor.
+
+    Args:
+        new_line: The snippet-indent line to re-indent for the output.
+        ref_orig_idx: Index in ``orig_lines`` of the reference context anchor.
+        ref_snip_idx: Index in ``snip_raw`` of the reference context anchor.
+        snip_raw: The full snippet, split into lines.
+        orig_lines: The full original, split into lines.
+        ref_shifted_right: When True, the reference anchor was re-indented to
+            match its DEEPER snippet position (FASTEDIT-M13 context-anchor
+            indent shift). The anchor's effective output indent is the snippet
+            indent, so ``indent_diff`` becomes 0 and the new line emits at its
+            snippet indent unchanged.
+    """
     ref_orig = orig_lines[ref_orig_idx]
     ref_snip = snip_raw[ref_snip_idx]
 
     orig_indent = len(ref_orig) - len(ref_orig.lstrip())
     snip_indent = len(ref_snip) - len(ref_snip.lstrip())
-    indent_diff = orig_indent - snip_indent
+    if ref_shifted_right:
+        # Anchor was emitted at snip_indent (deeper than orig) — treat the
+        # effective output indent of the anchor as the snippet indent.
+        effective_orig_indent = snip_indent
+    else:
+        effective_orig_indent = orig_indent
+    indent_diff = effective_orig_indent - snip_indent
 
     curr_indent = len(new_line) - len(new_line.lstrip())
     target_indent = max(0, curr_indent + indent_diff)
 
-    # Preserve tab vs space indentation from the original
-    indent_char = "\t" if ref_orig and ref_orig[0] == "\t" else " "
+    # Preserve tab vs space indentation: prefer the new line's own indent
+    # character when it's already indented (most snippets use consistent
+    # whitespace), falling back to the original reference anchor's style.
+    if new_line and new_line[0] == "\t":
+        indent_char = "\t"
+    elif ref_orig and ref_orig[0] == "\t":
+        indent_char = "\t"
+    else:
+        indent_char = " "
     return indent_char * target_indent + new_line.lstrip()
 
 
@@ -195,6 +222,23 @@ def deterministic_edit(
     first_ctx_si = context_entries[0][1]
     leading_new = [e for e in classified if e[1] < first_ctx_si and e[0] == "new"]
 
+    # Compute whether the FIRST context anchor is shifted right so that
+    # leading new-line adjustments match the anchor's effective output
+    # indent (FASTEDIT-M13).
+    first_ctx_orig_idx = context_entries[0][2]
+    first_ctx_si_idx = context_entries[0][1]
+    first_anchor_orig_indent = (
+        len(orig_lines[first_ctx_orig_idx])
+        - len(orig_lines[first_ctx_orig_idx].lstrip())
+    )
+    first_anchor_snip_indent = (
+        len(snip_raw[first_ctx_si_idx])
+        - len(snip_raw[first_ctx_si_idx].lstrip())
+    )
+    first_anchor_shifted_right = (
+        first_anchor_snip_indent > first_anchor_orig_indent
+    )
+
     if leading_new and first_orig > 0:
         # The snippet has new lines before its first anchor AND the original
         # has lines before that anchor (prefix). This typically means the
@@ -204,6 +248,7 @@ def deterministic_edit(
             adjusted = _adjust_indent(
                 entry[3], context_entries[0][2], context_entries[0][1],
                 snip_raw, orig_lines,
+                ref_shifted_right=first_anchor_shifted_right,
             )
             result.append(adjusted)
     elif leading_new:
@@ -212,6 +257,7 @@ def deterministic_edit(
             adjusted = _adjust_indent(
                 entry[3], context_entries[0][2], context_entries[0][1],
                 snip_raw, orig_lines,
+                ref_shifted_right=first_anchor_shifted_right,
             )
             result.append(adjusted)
     else:
@@ -224,8 +270,41 @@ def deterministic_edit(
         ctx_orig = ctx[2]
         ctx_si = ctx[1]
 
-        # Emit context line (from original, preserving its indent)
-        result.append(orig_lines[ctx_orig])
+        # Emit context line. In most cases this is `orig_lines[ctx_orig]`
+        # verbatim, but when the snippet places this shared line at a
+        # deeper indent than the original (e.g. wrap_block wraps a body
+        # line in a new scope), re-indent by the per-anchor snip↔orig
+        # delta. This is the context-anchor analogue of the M7 preserved-
+        # gap indent shift (FASTEDIT-M13).
+        #
+        # We only apply POSITIVE deltas (shift right). Shifting left is
+        # intentionally NOT performed: a snippet at a SHALLOWER indent is
+        # typically a "view" of the code (e.g. a method extracted from a
+        # class), where the user's intent is to merge back at the deeper
+        # original indent — not to flatten the enclosing scope. This
+        # preserves the semantics captured by
+        # test_snippet_at_different_indent_adjusts_new_lines.
+        orig_anchor_line = orig_lines[ctx_orig]
+        snip_anchor_line = snip_raw[ctx_si]
+        orig_anchor_indent = (
+            len(orig_anchor_line) - len(orig_anchor_line.lstrip())
+        )
+        snip_anchor_indent = (
+            len(snip_anchor_line) - len(snip_anchor_line.lstrip())
+        )
+        anchor_indent_delta = snip_anchor_indent - orig_anchor_indent
+
+        anchor_shifted_right = anchor_indent_delta > 0
+        if anchor_shifted_right:
+            indent_char = (
+                "\t" if orig_anchor_line.startswith("\t") else " "
+            )
+            result.append(
+                indent_char * anchor_indent_delta + orig_anchor_line
+            )
+        else:
+            # Zero or negative delta — preserve original indent.
+            result.append(orig_anchor_line)
 
         if ci == len(context_entries) - 1:
             break  # trailing section handled below
@@ -323,6 +402,7 @@ def deterministic_edit(
                 elif entry[0] == "new":
                     adjusted = _adjust_indent(
                         entry[3], ctx_orig, ctx_si, snip_raw, orig_lines,
+                        ref_shifted_right=anchor_shifted_right,
                     )
                     result.append(adjusted)
         else:
@@ -331,6 +411,7 @@ def deterministic_edit(
                 if entry[0] == "new":
                     adjusted = _adjust_indent(
                         entry[3], ctx_orig, ctx_si, snip_raw, orig_lines,
+                        ref_shifted_right=anchor_shifted_right,
                     )
                     result.append(adjusted)
                 elif entry[0] == "blank":
@@ -400,6 +481,23 @@ def deterministic_edit(
             else:
                 result.append(line)
 
+    # Compute whether the LAST context anchor was shifted right so that
+    # trailing new-line adjustments match the anchor's effective output
+    # indent (FASTEDIT-M13).
+    last_ctx_orig_idx = context_entries[-1][2]
+    last_ctx_si_idx = context_entries[-1][1]
+    last_anchor_orig_indent = (
+        len(orig_lines[last_ctx_orig_idx])
+        - len(orig_lines[last_ctx_orig_idx].lstrip())
+    )
+    last_anchor_snip_indent = (
+        len(snip_raw[last_ctx_si_idx])
+        - len(snip_raw[last_ctx_si_idx].lstrip())
+    )
+    last_anchor_shifted_right = (
+        last_anchor_snip_indent > last_anchor_orig_indent
+    )
+
     for entry in trailing:
         if entry[0] == "marker" and not suffix_emitted:
             _emit_suffix_with_indent()
@@ -407,6 +505,7 @@ def deterministic_edit(
         elif entry[0] == "new":
             adjusted = _adjust_indent(
                 entry[3], last_orig, last_ctx_si, snip_raw, orig_lines,
+                ref_shifted_right=last_anchor_shifted_right,
             )
             result.append(adjusted)
         elif entry[0] == "blank" and not suffix_emitted:
@@ -414,7 +513,15 @@ def deterministic_edit(
             result.append("")
 
     if not suffix_emitted:
-        result.extend(orig_lines[last_orig + 1:])
+        # If the snippet had trailing NEW lines (no marker), treat them as
+        # REPLACING the orig suffix (analogous to the no-marker gap-drop
+        # rule for mid-sections). Without this, a snippet that rewrites
+        # the tail of a block (e.g. wrap_block with closing braces for a
+        # new scope) would emit BOTH the new tail and the original tail —
+        # duplicating closers. (FASTEDIT-M13.)
+        has_trailing_new = any(e[0] == "new" for e in trailing)
+        if not has_trailing_new:
+            result.extend(orig_lines[last_orig + 1:])
 
     merged = "\n".join(result)
     # Preserve trailing newline

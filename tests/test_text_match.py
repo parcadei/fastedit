@@ -1071,3 +1071,221 @@ class TestDeterministicEditMarkerGapIndentAdjust:
         result_lines = result.splitlines()
         assert "    a = compute_a()" not in result_lines
         assert "    b = compute_b()" not in result_lines
+
+
+class TestDeterministicEditContextAnchorIndent:
+    """FASTEDIT-M13: context-anchor lines must re-indent when the snippet
+    places them at a different indent than the original.
+
+    The M7 fix added indent-delta logic for preserved-gap lines emitted
+    under a marker. This class covers the complementary case: lines the
+    snippet and original share lexically, classified as context anchors,
+    but at different indent levels because the snippet wraps them in a
+    deeper (or shallower) scope.
+    """
+
+    def test_wrap_block_deeper_context_anchors_rust(self):
+        # rust/02 reproducer: original function body has two statements at
+        # 4sp. Snippet wraps them in an immediately-invoked closure whose
+        # body sits at 8sp. Those two lines appear BOTH in the snippet and
+        # the original at the same lexical content → classified as context
+        # anchors. The snippet places them at 8sp; the fix must re-emit
+        # them at 8sp (not at the original 4sp).
+        original = (
+            "fn load_config(path: &str) -> Config {\n"
+            "    let raw = std::fs::read_to_string(path).unwrap();\n"
+            "    serde_json::from_str(&raw).unwrap()\n"
+            "}"
+        )
+        snippet = (
+            "fn load_config(path: &str) -> Result<Config, ConfigError> {\n"
+            "    match (|| -> Result<Config, ConfigError> {\n"
+            "        let raw = std::fs::read_to_string(path).unwrap();\n"
+            "        serde_json::from_str(&raw).unwrap()\n"
+            "    })() {\n"
+            "        Ok(cfg) => Ok(cfg),\n"
+            "        Err(e) => Err(e),\n"
+            "    }\n"
+            "}"
+        )
+        expected = (
+            "fn load_config(path: &str) -> Result<Config, ConfigError> {\n"
+            "    match (|| -> Result<Config, ConfigError> {\n"
+            "        let raw = std::fs::read_to_string(path).unwrap();\n"
+            "        serde_json::from_str(&raw).unwrap()\n"
+            "    })() {\n"
+            "        Ok(cfg) => Ok(cfg),\n"
+            "        Err(e) => Err(e),\n"
+            "    }\n"
+            "}"
+        )
+        result = deterministic_edit(original, snippet)
+        assert result is not None, (
+            "deterministic_edit returned None — context anchors should be "
+            "picked up via the shared read/parse lines."
+        )
+        assert result == expected, (
+            f"Byte-exact mismatch.\n---expected---\n{expected}\n"
+            f"---actual---\n{result}"
+        )
+
+    def test_wrap_block_shallower_snippet_is_view_only(self):
+        # Edge case: when the SNIPPET places shared lines at a SHALLOWER
+        # indent than the original, this is treated as a "view" of the
+        # code (e.g. a method extracted from a surrounding class, or a
+        # body shown without its wrapper). Context anchors are emitted at
+        # ORIGINAL indent — NOT shifted left — to preserve the enclosing
+        # scope semantics. Shifting left would break prefix preservation
+        # (e.g. the outer `class C:` signature) and is intentionally not
+        # supported. See the commentary in deterministic_edit's context-
+        # anchor emit branch.
+        #
+        # This guards against accidentally left-shifting anchors when the
+        # snippet happens to be shallower than the original (e.g. a user
+        # provides a "view" snippet at 0sp but wants to add a line inside
+        # a method at 8sp).
+        original = textwrap.dedent("""\
+            class C:
+                def foo(self):
+                    x = 1
+                    return x""")
+        snippet = "def foo(self):\n    x = 1\n    y = 2\n    return x"
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        # The new line MUST sit at the original's body indent (8sp),
+        # not at the snippet's shallower indent (4sp).
+        assert "        y = 2" in result, (
+            f"expected new line at original body indent (8sp):\n{result}"
+        )
+        # The context anchors MUST stay at their original indent (view is
+        # not authoritative for left-shift).
+        assert "    def foo(self):" in result
+        assert "        x = 1" in result
+        assert "        return x" in result
+        # The class prefix is preserved.
+        assert result.startswith("class C:")
+
+    def test_same_indent_anchors_are_byte_identical(self):
+        # Regression guard — add_guard pattern where anchors share the
+        # original's indent. Per-anchor delta is 0 → output must be
+        # byte-identical to the pre-fix behaviour.
+        original = textwrap.dedent("""\
+            def process(items):
+                result = []
+                for item in items:
+                    result.append(item.value)
+                return result""")
+        snippet = textwrap.dedent("""\
+            def process(items):
+                if not items:
+                    return []
+                result = []
+                for item in items:
+                    result.append(item.value)
+                return result""")
+        expected = textwrap.dedent("""\
+            def process(items):
+                if not items:
+                    return []
+                result = []
+                for item in items:
+                    result.append(item.value)
+                return result""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        assert result == expected
+
+    def test_marker_gap_indent_still_works_after_fix(self):
+        # M7 regression guard: the preserved-gap indent logic for marker
+        # mode must still function. The two anchors are def + return; the
+        # marker preserves the body and shifts its indent by +4sp.
+        original = textwrap.dedent("""\
+            def load(path):
+                opened = open_file(path)
+                data = read(opened)
+                cleaned = clean(data)
+                return cleaned""")
+        snippet = textwrap.dedent("""\
+            def load(path):
+                try:
+                    # ... existing code ...
+                except IOError:
+                    cleaned = None
+                return cleaned""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        # Gap lines shifted to 8sp (inside try:).
+        assert "        opened = open_file(path)" in result
+        assert "        data = read(opened)" in result
+        assert "        cleaned = clean(data)" in result
+        # The context anchor 'return cleaned' stays at 4sp (unchanged).
+        assert "    return cleaned" in result
+        # And there's no stale 4sp body.
+        result_lines = result.splitlines()
+        assert "    opened = open_file(path)" not in result_lines
+
+    def test_per_anchor_delta_two_anchors_shifted_uniformly(self):
+        # Two context anchors both shifted by +4 (the rust/02 shape):
+        # the signature line differs between orig and snippet (so it's
+        # not a context anchor), and the body anchors — `let raw` and
+        # `serde_json::...` — appear in both but the snippet places them
+        # at +4sp deeper because of the closure wrap. Fix D's baseline
+        # expected_diff is established by the FIRST real context anchor
+        # (`let raw`), so the second (`serde_json::...`) at the same
+        # uniform shift is consistent and accepted. Both must emit at
+        # the snippet's deeper indent.
+        original = textwrap.dedent("""\
+            fn helper(x: i32) -> i32 {
+                let y = compute(x);
+                let z = normalize(y);
+                z
+            }""")
+        snippet = textwrap.dedent("""\
+            fn helper(x: i32) -> Result<i32, Err> {
+                wrapped(|| {
+                    let y = compute(x);
+                    let z = normalize(y);
+                    z
+                })
+            }""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        # Body anchor lines emit shifted +4 (8sp inside the wrapped block).
+        assert "        let y = compute(x);" in result
+        assert "        let z = normalize(y);" in result
+        # The original 4sp versions should NOT appear.
+        result_lines = result.splitlines()
+        assert "    let y = compute(x);" not in result_lines
+        assert "    let z = normalize(y);" not in result_lines
+
+    def test_tab_indentation_consistency(self):
+        # Original uses tabs. Snippet wraps in another scope using tabs.
+        # Context anchors must re-indent using tab characters (not spaces).
+        original = (
+            "fn foo() {\n"
+            "\tlet x = compute();\n"
+            "\treturn x;\n"
+            "}"
+        )
+        snippet = (
+            "fn foo() {\n"
+            "\tif debug {\n"
+            "\t\tlet x = compute();\n"
+            "\t\treturn x;\n"
+            "\t}\n"
+            "}"
+        )
+        expected = (
+            "fn foo() {\n"
+            "\tif debug {\n"
+            "\t\tlet x = compute();\n"
+            "\t\treturn x;\n"
+            "\t}\n"
+            "}"
+        )
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        assert result == expected
+        # Ensure the shifted anchor line uses tabs, not spaces.
+        assert "\t\tlet x = compute();" in result
+        assert "    let x = compute();" not in result
