@@ -316,6 +316,123 @@ def test_javascript_analysis():
     assert len(structure.functions) >= 2  # createApp, processData
 
 
+# -- Elixir analysis --
+
+ELIXIR_CODE = '''defmodule Stats do
+  @moduledoc "Statistics helpers."
+
+  import Enum, only: [sum: 1]
+
+  def average(nums) do
+    if Enum.empty?(nums), do: 0.0
+    total = sum(nums)
+    total / length(nums)
+  end
+
+  defp helper, do: :ok
+
+  defmacro log(x) do
+    quote do: IO.puts(unquote(x))
+  end
+
+  defmodule Inner do
+    def deep, do: 42
+  end
+end
+'''
+
+
+def test_detect_elixir():
+    assert detect_language("app.ex") == "elixir"
+    assert detect_language("script.exs") == "elixir"
+
+
+def test_elixir_analysis_structure():
+    """Elixir module parses cleanly and emits at least one function and module."""
+    structure = analyze_file(ELIXIR_CODE, "elixir", "stats.ex")
+    assert structure.language == "elixir"
+    assert not structure.has_parse_errors
+    # At least one class-like (module) and one function-like (def).
+    assert len(structure.classes) >= 1
+    assert len(structure.functions) >= 1
+    # Imports (import / alias / require / use) should be picked up too.
+    assert len(structure.imports) >= 1
+
+
+def test_elixir_function_and_module_names():
+    """Function and module names extract from call-target arguments."""
+    structure = analyze_file(ELIXIR_CODE, "elixir", "stats.ex")
+    top_class_names = {c.name for c in structure.classes}
+    # Top-level module surfaces; nested ``defmodule Inner`` is stored as
+    # a child of the outer module (matches the flat-top-level convention
+    # used by every other language in the collector).
+    assert "Stats" in top_class_names
+    stats = next(c for c in structure.classes if c.name == "Stats")
+    nested_names = {c.name for c in stats.children}
+    assert "Inner" in nested_names
+
+    # Functions are harvested flat across the tree.
+    func_names = {f.name for f in structure.functions}
+    assert "average" in func_names  # def
+    assert "helper" in func_names   # defp
+    assert "log" in func_names      # defmacro
+    assert "deep" in func_names     # def inside nested module
+
+
+def test_elixir_parse_valid():
+    assert validate_parse(ELIXIR_CODE, "elixir")
+    # Unterminated module → parse errors.
+    assert not validate_parse("defmodule Foo do\n  def broken(\n", "elixir")
+
+
+def test_elixir_ignores_ordinary_calls():
+    """Plain function calls (``IO.puts``) must NOT be harvested as defs."""
+    src = 'IO.puts("hi")\n'
+    structure = analyze_file(src, "elixir", "t.ex")
+    assert not structure.has_parse_errors
+    # ``IO.puts`` is a call, but its target is `dot` (not an identifier in
+    # the def/defmodule family), so it's neither a function nor a class.
+    assert structure.functions == []
+    assert structure.classes == []
+
+
+def test_elixir_resolve_symbol_via_ast_map(tmp_path):
+    """End-to-end: ``_resolve_symbol`` finds Elixir defs via ``get_ast_map``.
+
+    ``chunked_merge``'s ``replace=symbol`` path drives ``_resolve_symbol``
+    against ``get_ast_map(file_path)`` — which itself shells out to
+    ``tldr structure``. This test writes a real ``.ex`` file and asserts
+    the resolver returns a node for ``hello``. Skipped when ``tldr`` is
+    not installed in the environment (CI safe).
+    """
+    from shutil import which
+    if which("tldr") is None:
+        pytest.skip("tldr binary not available in this environment")
+
+    from fastedit.inference.ast_utils import get_ast_map
+    from fastedit.inference.chunked_merge import _resolve_symbol
+
+    p = tmp_path / "greeter.ex"
+    p.write_text(
+        "defmodule Greeter do\n"
+        "  def hello(name) do\n"
+        "    \"Hi \" <> name\n"
+        "  end\n"
+        "end\n",
+        encoding="utf-8",
+    )
+    nodes = get_ast_map(str(p), total_lines=5)
+    assert nodes, "get_ast_map returned no nodes for a real Elixir file"
+
+    names = {n.name for n in nodes}
+    assert "hello" in names
+    assert "Greeter" in names
+
+    node = _resolve_symbol("hello", nodes)
+    assert node is not None
+    assert node.name == "hello"
+
+
 # -- Cross-cutting tests --
 
 def test_parse_validity_check():
