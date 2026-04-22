@@ -271,9 +271,74 @@ def chunked_merge(
                     model_tokens=0,
                     latency_ms=0.0,
                 )
+            # Direct-swap fast-path: when deterministic_edit can't anchor
+            # (every body line changed), but the snippet is a complete
+            # re-definition of the target symbol, we can do a pure AST
+            # boundary replacement — zero model tokens. Covers patterns
+            # like change_signature, extend_literal, and full-function
+            # wrap_block.
+            #
+            # Conditions:
+            #   1. Snippet contains no marker lines — markers imply
+            #      "preserve original chunks" which is inherently
+            #      incompatible with whole-symbol swap.
+            #   2. Snippet parses cleanly (tldr structure) and reports
+            #      exactly one top-level definition.
+            #   3. That definition's name equals `replace` (already
+            #      verified by the extras-check above, but re-verify
+            #      here against the parsed AST to guard against
+            #      regex-only name extraction false positives).
+            if not any(_is_marker_line(ln) for ln in snippet.splitlines()):
+                from pathlib import Path as _Path
+                snippet_parse = _try_tldr_snippet_parse(
+                    snippet, _Path(file_path).suffix,
+                )
+                if (
+                    snippet_parse
+                    and len(snippet_parse) == 1
+                    and snippet_parse[0] == replace
+                ):
+                    # Align snippet indent to match the target function's
+                    # indent in the original.
+                    anchor_first_line = (
+                        original_lines[func_start]
+                        if func_start < total_lines
+                        else ""
+                    )
+                    snippet_text = snippet.rstrip("\n") + "\n"
+                    snippet_text = _align_snippet_indent(
+                        snippet_text, anchor_first_line,
+                    )
+                    snippet_lines = snippet_text.splitlines(keepends=True)
+                    if snippet_lines and not snippet_lines[-1].endswith("\n"):
+                        snippet_lines[-1] += "\n"
+
+                    result_lines = list(original_lines)
+                    result_lines[func_start:func_end] = snippet_lines
+                    merged = "".join(result_lines)
+
+                    parse_valid = True
+                    if language:
+                        from ..data_gen.ast_analyzer import validate_parse
+                        parse_valid = validate_parse(merged, language)
+
+                    _log.info(
+                        "Direct-swap for replace='%s' (L%d-L%d): "
+                        "0 model tokens, %d snippet lines",
+                        replace, func_start + 1, func_end, len(snippet_lines),
+                    )
+                    return ChunkedMergeResult(
+                        merged_code=merged,
+                        parse_valid=parse_valid,
+                        chunks_used=0,
+                        chunk_regions=[],
+                        model_tokens=0,
+                        latency_ms=0.0,
+                    )
+
             _log.info(
-                "Deterministic text-match failed for replace='%s', "
-                "falling back to model",
+                "Deterministic text-match and direct-swap failed for "
+                "replace='%s', falling back to model",
                 replace,
             )
 
