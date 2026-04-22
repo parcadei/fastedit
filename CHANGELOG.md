@@ -2,6 +2,11 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.1] — 2026-04-22
+
+### Fixed
+- **Stale-AST corruption on chained edits** — chained `fast_edit` calls on the same file no longer corrupt output when prior edits shift line numbers. Root cause: `chunked_merge` relied on the `tldr` daemon's AST cache, which can return stale line numbers after the file is modified (file-watcher invalidation race). Fixed by parsing the source in-memory with tree-sitter directly in the edit path — no subprocess, no daemon, no cache staleness. Affected paths: `replace=` deterministic text-match, `replace=` direct-swap, `after=` insertion, and `_merge_preserve_siblings`. Regression covered by `tests/test_chained_edits_stale_ast.py` (Python + Rust fixtures plus a monkeypatched stale-AST simulation).
+
 ## [0.2.0] — 2026-04-22
 
 ### Added
@@ -21,5 +26,6 @@ All notable changes to FastEdit are documented in this file. Format: [Keep a Cha
 ## [0.1.0]
 Initial release.
 
+[0.2.1]: https://github.com/parcadei/fastedit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/parcadei/fastedit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/parcadei/fastedit/releases/tag/v0.1.0
