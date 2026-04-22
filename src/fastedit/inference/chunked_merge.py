@@ -131,6 +131,162 @@ def _check_hallucinations(
 # Core merge function — the only logic that remains in this file
 # ---------------------------------------------------------------------------
 
+def _merge_preserve_siblings(
+    original_code: str,
+    snippet: str,
+    file_path: str,
+    replace: str,
+    language: str | None,
+) -> ChunkedMergeResult:
+    """Replace `replace` (a class) with `snippet`, carrying over any named
+    children of the original class that don't appear in the snippet.
+
+    Pure-AST, zero-token operation. Used when the caller passes
+    `preserve_siblings=True` on a `replace=` edit.
+
+    The merged output contains:
+      - the snippet's class shell and any members it defines
+      - followed by every sibling (method, nested class, ...) present in
+        the original class but missing from the snippet, spliced verbatim
+        before the closing brace of the snippet.
+
+    Sibling boundaries come from tldr's structure/extract output. Field
+    declarations aren't exposed as separate nodes by tldr in Java/Kotlin/
+    Swift/TS, which is why the field change lives in the snippet itself.
+    """
+    import logging
+
+    _log = logging.getLogger("fastedit.chunked_merge")
+
+    original_lines = original_code.splitlines(keepends=True)
+    total_lines = len(original_lines)
+
+    ast_nodes = get_ast_map(file_path, total_lines) or []
+    target = _resolve_symbol(replace, ast_nodes)
+    if target is None:
+        available = _qualified_symbol_names(ast_nodes)
+        raise ValueError(
+            f"Symbol '{replace}' not found in {file_path}. "
+            f"Available: {available}"
+        )
+
+    class_start = target.line_start  # 1-indexed
+    class_end = target.line_end      # 1-indexed inclusive
+
+    # Collect named children of the class: any AST node strictly within
+    # the class's line span, excluding the class itself.
+    child_nodes = [
+        n for n in ast_nodes
+        if n.name != replace
+        and n.line_start >= class_start
+        and n.line_end <= class_end
+    ]
+
+    # Parse the snippet to discover which children it names.
+    snippet_child_names: set[str] = set()
+    snippet_nodes = _get_snippet_definitions(snippet, language)
+    for n in snippet_nodes:
+        if n.name != replace:
+            snippet_child_names.add(n.name)
+
+    # Missing = children in original but not mentioned by the snippet.
+    missing = [n for n in child_nodes if n.name not in snippet_child_names]
+
+    # Re-indent the snippet so its class header matches the original's
+    # class header indent level.
+    class_first_line = original_lines[class_start - 1] if class_start - 1 < total_lines else ""
+    indent = class_first_line[: len(class_first_line) - len(class_first_line.lstrip())]
+
+    snippet_lines = snippet.splitlines(keepends=True)
+    snippet_first_nonblank = next(
+        (ln for ln in snippet_lines if ln.strip()), class_first_line
+    )
+    snippet_indent = snippet_first_nonblank[
+        : len(snippet_first_nonblank) - len(snippet_first_nonblank.lstrip())
+    ]
+    if snippet_indent != indent:
+        new_snippet_lines: list[str] = []
+        for line in snippet_lines:
+            if line.strip() and line.startswith(snippet_indent):
+                new_snippet_lines.append(indent + line[len(snippet_indent):])
+            else:
+                new_snippet_lines.append(line)
+        snippet_lines = new_snippet_lines
+
+    # Strip ellipsis marker lines from the snippet — preserve_siblings
+    # subsumes their role.
+    snippet_lines = [ln for ln in snippet_lines if not _MARKER_RE.match(ln)]
+
+    # Build preserved blocks from the original (in original source order).
+    preserved_blocks: list[str] = []
+    for child in sorted(missing, key=lambda n: n.line_start):
+        cstart = child.line_start - 1  # 0-indexed
+        cend = child.line_end          # exclusive
+        preserved_blocks.append("".join(original_lines[cstart:cend]))
+
+    # Locate the closing brace line of the snippet's class body. We
+    # assume languages with `{ ... }` class syntax (Java/Kotlin/Swift/TS
+    # all qualify). Scan from the end for the first line that is exactly
+    # `}` (after whitespace).
+    close_idx: int | None = None
+    for i in range(len(snippet_lines) - 1, -1, -1):
+        if snippet_lines[i].strip() == "}":
+            close_idx = i
+            break
+
+    if close_idx is None:
+        raise ValueError(
+            "preserve_siblings=True requires a class body with a `}` closing "
+            "brace in the snippet — no such line found. This path currently "
+            "supports Java/Kotlin/Swift/TypeScript (and similar brace-delimited "
+            "languages)."
+        )
+
+    assembled: list[str] = []
+    assembled.extend(snippet_lines[:close_idx])
+    # Blank-line separator before preserved siblings if the snippet doesn't
+    # already end with a blank line.
+    if preserved_blocks and assembled and assembled[-1].strip() != "":
+        assembled.append("\n")
+    for i, block in enumerate(preserved_blocks):
+        assembled.append(block)
+        # Blank-line separator between preserved siblings (not after last).
+        if i < len(preserved_blocks) - 1 and not block.endswith("\n\n"):
+            assembled.append("\n")
+    assembled.extend(snippet_lines[close_idx:])
+
+    # Splice the assembled class body back into the original file.
+    result_lines = list(original_lines)
+    result_lines[class_start - 1:class_end] = assembled
+    merged = "".join(result_lines)
+
+    parse_valid = True
+    if language:
+        from ..data_gen.ast_analyzer import validate_parse
+        parse_valid = validate_parse(merged, language)
+        if not parse_valid:
+            _log.warning(
+                "preserve_siblings produced parse-invalid output for "
+                "replace='%s' in %s (language=%s)",
+                replace, file_path, language,
+            )
+
+    _log.info(
+        "preserve_siblings for replace='%s' (L%d-L%d): "
+        "%d preserved sibling(s), 0 model tokens",
+        replace, class_start, class_end, len(preserved_blocks),
+    )
+    return ChunkedMergeResult(
+        merged_code=merged,
+        parse_valid=parse_valid,
+        chunks_used=0,
+        chunk_regions=[],
+        model_tokens=0,
+        latency_ms=0.0,
+        chunks_rejected=0,
+    )
+
+
 def chunked_merge(
     original_code: str,
     snippet: str,
@@ -140,6 +296,7 @@ def chunked_merge(
     padding: int = 30,
     after: str | None = None,
     replace: str | None = None,
+    preserve_siblings: bool = False,
 ) -> ChunkedMergeResult:
     """Merge a snippet into a large file using chunked extraction.
 
@@ -152,10 +309,33 @@ def chunked_merge(
         padding: Lines of context padding around edit regions.
         after: Optional symbol name — insert new code after this function/class.
         replace: Optional symbol name — replace this function/class/method entirely.
+        preserve_siblings: When True alongside `replace=ClassName`, carry over
+            any named sibling members (methods, nested classes) that exist in
+            the original class but aren't mentioned in the snippet. Lets you
+            edit a subset of a class's members without enumerating the rest.
+            Only valid with `replace=`; raises ValueError otherwise.
 
     Returns:
         ChunkedMergeResult with the fully merged file.
     """
+    # preserve_siblings is only meaningful on a `replace=` edit. Fail
+    # early and loudly so callers don't silently no-op.
+    if preserve_siblings and not replace:
+        raise ValueError(
+            "preserve_siblings=True requires replace=ClassName. "
+            "The flag controls how `replace=` behaves when the snippet "
+            "describes only a subset of the class's members."
+        )
+
+    if preserve_siblings and replace:
+        return _merge_preserve_siblings(
+            original_code=original_code,
+            snippet=snippet,
+            file_path=file_path,
+            replace=replace,
+            language=language,
+        )
+
     original_lines = original_code.splitlines(keepends=True)
     total_lines = len(original_lines)
 
