@@ -845,6 +845,106 @@ class TestDeterministicEditEdgeCases:
         assert start_idx < a_idx < b_idx < c_idx < end_idx
 
 
+class TestDeterministicEditTwoMarkerDefersToModel:
+    """Bug 2 regression: a section with 2+ markers between two context
+    anchors has genuinely ambiguous position for any inserted new line.
+    deterministic_edit must return None so chunked_merge falls back to
+    the model for semantic placement.
+    """
+
+    def test_two_markers_bracketing_new_line_returns_none(self):
+        # Exact reproducer from the bug report: between the first and last
+        # context anchor there are two markers with a new line between them.
+        # Previously deterministic_edit produced clean→validate→transform→
+        # normalize→return (wrong position). It must now return None.
+        original = textwrap.dedent("""\
+            def pipeline(data):
+                data = clean(data)
+                data = validate(data)
+                data = transform(data)
+                return data
+        """)
+        snippet = textwrap.dedent("""\
+            def pipeline(data):
+                data = clean(data)
+                # ... existing code ...
+                data = normalize(data)
+                # ... existing code ...
+                return data""")
+        result = deterministic_edit(original, snippet)
+        assert result is None
+
+    def test_three_markers_returns_none(self):
+        # Even more ambiguous: 3 markers in a single section.
+        original = textwrap.dedent("""\
+            def f():
+                a()
+                b()
+                c()
+                d()
+                e()
+        """)
+        snippet = textwrap.dedent("""\
+            def f():
+                a()
+                # ... existing code ...
+                x()
+                # ... existing code ...
+                y()
+                # ... existing code ...
+                e()""")
+        result = deterministic_edit(original, snippet)
+        assert result is None
+
+    def test_single_marker_still_works(self):
+        # Regression guard: a single-marker section must still succeed.
+        original = textwrap.dedent("""\
+            def pipeline(data):
+                data = clean(data)
+                data = validate(data)
+                data = transform(data)
+                return data
+        """)
+        snippet = textwrap.dedent("""\
+            def pipeline(data):
+                data = clean(data)
+                # ... existing code ...
+                data = normalize(data)
+                return data""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        assert "data = normalize(data)" in result
+        # Preserved gap lines kept.
+        assert "data = validate(data)" in result
+        assert "data = transform(data)" in result
+
+    def test_markers_in_different_sections_still_works(self):
+        # Two markers but in DIFFERENT sections (separated by a context
+        # anchor) are not ambiguous — each section has 1 marker. Must succeed.
+        original = textwrap.dedent("""\
+            def f():
+                a = 1
+                b = 2
+                c = 3
+                d = 4
+                e = 5
+                return a
+        """)
+        snippet = textwrap.dedent("""\
+            def f():
+                a = 1
+                # ... existing code ...
+                c = 3
+                # ... existing code ...
+                return a""")
+        result = deterministic_edit(original, snippet)
+        assert result is not None
+        # All preserved gaps kept.
+        assert "b = 2" in result
+        assert "d = 4" in result
+        assert "e = 5" in result
+
+
 class TestDeterministicEditMarkerGapIndentAdjust:
     """Bug 1 regression: preserved-gap lines must shift indent when a wrapper
     (try/except, if-guard, with-block) adds indentation around existing code.

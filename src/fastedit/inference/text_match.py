@@ -241,6 +241,18 @@ def deterministic_edit(
         ]
 
         has_marker = any(e[0] == "marker" for e in section)
+        marker_count = sum(1 for e in section if e[0] == "marker")
+
+        if marker_count >= 2:
+            # Bug 2 fix — Two or more markers in one section: the position of
+            # any new line between them is genuinely ambiguous (which gap does
+            # it precede?). Fall back to the model — it can infer semantic
+            # placement from context.
+            _log.info(
+                "Text-match: %d markers in section — falling back to model",
+                marker_count,
+            )
+            return None
 
         if has_marker:
             # Marker mode: keep original gap.
