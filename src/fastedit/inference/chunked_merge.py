@@ -22,6 +22,7 @@ from .ast_utils import (  # noqa: F401
     _qualified_symbol_names,
     _resolve_symbol,
     get_ast_map,
+    get_ast_map_from_source,
 )
 from .chunk_locator import (  # noqa: F401
     _find_enclosing_block,
@@ -161,7 +162,10 @@ def _merge_preserve_siblings(
     original_lines = original_code.splitlines(keepends=True)
     total_lines = len(original_lines)
 
-    ast_nodes = get_ast_map(file_path, total_lines) or []
+    # Race-free in-memory AST parse. `original_code` may differ from what
+    # the tldr daemon has cached on disk; parsing in-memory is the only
+    # way to guarantee correct line coordinates under chained edits.
+    ast_nodes = get_ast_map_from_source(original_code, file_path) or []
     target = _resolve_symbol(replace, ast_nodes)
     if target is None:
         available = _qualified_symbol_names(ast_nodes)
@@ -345,7 +349,11 @@ def chunked_merge(
     # Fast path: `after` means pure text insertion — no model needed.
     # The snippet IS the new code; just splice it after the anchor symbol.
     if after:
-        ast_nodes = get_ast_map(file_path, total_lines)
+        # Parse the in-memory `original_code` (authoritative) instead of
+        # shelling out to `tldr structure`, which consults a daemon cache
+        # that can return stale line numbers after a recent write. See
+        # `get_ast_map_from_source` for rationale.
+        ast_nodes = get_ast_map_from_source(original_code, file_path)
         anchor_node = _resolve_symbol(after, ast_nodes or [])
         if anchor_node is None:
             available = _qualified_symbol_names(ast_nodes or [])
@@ -417,7 +425,9 @@ def chunked_merge(
         # if <2 context anchors or unsafe gap detected.
         from .text_match import deterministic_edit
 
-        ast_nodes = get_ast_map(file_path, total_lines)
+        # In-memory parse (race-free). See comment above the `after:` fast
+        # path for why we do not consult the tldr daemon here.
+        ast_nodes = get_ast_map_from_source(original_code, file_path)
         target_node = _resolve_symbol(replace, ast_nodes or [])
         if target_node:
             func_start = target_node.line_start - 1  # 0-indexed
