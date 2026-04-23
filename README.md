@@ -65,25 +65,46 @@ When deterministic matching can't resolve the edit (indent structure changes, fu
 
 **Prerequisite:** [tldr](https://github.com/parcadei/tldr-code) must be on PATH (used for AST analysis).
 
-```bash
-pip install fastedits
-fastedit pull          # downloads the 1.7B model (~3GB, one-time)
-```
+### Recommended — `uv tool` (handles the venv for you)
 
-For Apple Silicon (recommended for local use):
 ```bash
-pip install fastedits[mlx]
+# Apple Silicon (local 1.7B model via MLX):
+uv tool install 'fastedits[mlx]'
+
+# GPU servers (vLLM backend):
+uv tool install 'fastedits[vllm]'
+
+# Generic (for pointing at an external OpenAI-compatible server):
+uv tool install fastedits
+
+# Download the 1.7B merge model (~3 GB, one-time):
 fastedit pull
 ```
 
-For GPU servers (vLLM, TGI) or local servers (LM Studio, llama.cpp, Ollama):
-```bash
-# Optional: install vLLM for GPU serving
-pip install fastedits[vllm]
+The CLI lands at `~/.local/bin/fastedit`. Upgrade later with `uv tool upgrade fastedits`.
 
-# Or point at any OpenAI-compatible server:
+### Alternatives
+
+```bash
+# pipx (same idea, different tool):
+pipx install 'fastedits[mlx]' && fastedit pull
+
+# Plain venv:
+python3 -m venv ~/.venvs/fastedit
+source ~/.venvs/fastedit/bin/activate
+pip install 'fastedits[mlx]'
+fastedit pull
+```
+
+Avoid `pip install fastedits` into a Homebrew / distro-managed Python — it will fail with `error: externally-managed-environment` (PEP 668).
+
+### Pointing at an external LLM server
+
+```bash
 FASTEDIT_BACKEND=llm FASTEDIT_LLM_API_BASE=http://localhost:1234/v1 fastedit edit ...
 ```
+
+Works with LM Studio, llama.cpp, Ollama (via OpenAI-compatible endpoint), vLLM, TGI, any OpenAI-API-compatible server.
 
 ## CLI
 
