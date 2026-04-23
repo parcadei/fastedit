@@ -2,6 +2,22 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.2.4 — 2026-04-23
+
+### Added
+- **Marker-position semantics.** Snippets with a `# ... existing code ...` marker but no anchor lines can now express position implicitly:
+  - `<new_lines> + marker` inserts new_lines at the top of the function body
+  - `marker + <new_lines>` inserts new_lines at the bottom
+  - Existing anchor-based and full-body-replace behaviors are unchanged.
+  This drops the redundant "one anchor line required" for simple insertions.
+- **Short marker support.** Three new marker forms are accepted, each fewer tokens than the original:
+  - `#...` (Python / Ruby / Elixir) — 2 tokens
+  - `//...` (JS / TS / Rust / Go / Java / C / C++ / Swift / Kotlin / C# / PHP) — 2 tokens
+  - `…` (Unicode ellipsis — language-agnostic) — 1 token
+  The legacy `# ... existing code ...` / `// ... existing code ...` forms continue to work. Internally, all forms are normalized to the canonical long form before processing.
+
+These two features combined let calling agents emit snippets that are just `<new_code>` + one short marker — meaningfully closer to the "just the change" ideal for tool-call payloads.
+
 ## [0.2.3] — 2026-04-23
 
 ### Fixed
