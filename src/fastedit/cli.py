@@ -501,6 +501,16 @@ def cmd_rename(args):
         )
         sys.exit(1)
 
+    if args.dry_run:
+        skip_note = (
+            f" (skipping {skipped} in strings/comments)" if skipped else ""
+        )
+        print(
+            f"Dry run: would rename '{args.old_name}' -> '{args.new_name}' in "
+            f"1 file, {count} replacement(s){skip_note}: {args.file}"
+        )
+        return
+
     backups = BackupStore()
     _atomic_write(path, renamed, backups=backups)
 
@@ -766,6 +776,10 @@ def main():
     rn_p.add_argument("file", help="Path to source file")
     rn_p.add_argument("old_name", help="Current symbol name")
     rn_p.add_argument("new_name", help="New symbol name")
+    rn_p.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview what would change without writing",
+    )
 
     # rename-all (cross-file rename, no model)
     ra_p = sub.add_parser(

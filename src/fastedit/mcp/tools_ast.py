@@ -115,10 +115,11 @@ async def fast_move(file_path: str, symbol: str, after: str) -> str:
         "Drives matching through `tldr references --scope file`, so the rename "
         "skips substrings inside strings, comments, and docstrings and never "
         "touches partial matches (renaming 'get' won't touch 'get_all'). "
-        "Use fast_rename_all for cross-file renames. Instant, no model."
+        "Use fast_rename_all for cross-file renames. Instant, no model. "
+        "Pass dry_run=True to preview without writing."
     ),
 )
-async def fast_rename(file_path: str, old_name: str, new_name: str) -> str:
+async def fast_rename(file_path: str, old_name: str, new_name: str, dry_run: bool = False) -> str:
     """Rename all AST-verified references to a symbol in a single file.
 
     Drives matching through ``tldr references <name> <file> --scope file``,
@@ -126,6 +127,8 @@ async def fast_rename(file_path: str, old_name: str, new_name: str) -> str:
     comments, and docstrings are skipped. When tldr is unavailable the call
     becomes a no-op (count=0) rather than falling back to regex, matching
     the safety stance of fast_rename_all.
+
+    Pass ``dry_run=True`` to preview what would change without writing any file.
     """
     ctx = mcp.get_context()
     lc = ctx.request_context.lifespan_context
@@ -146,6 +149,15 @@ async def fast_rename(file_path: str, old_name: str, new_name: str) -> str:
                 f"Error: no code references to '{old_name}' found in {file_path} "
                 f"(AST-verified via tldr references --scope file; matches inside "
                 f"strings/comments/docstrings are not counted)."
+            )
+
+        if dry_run:
+            skip_note = (
+                f" (skipping {skipped} in strings/comments)" if skipped else ""
+            )
+            return (
+                f"Dry run: would rename '{old_name}' -> '{new_name}' in "
+                f"1 file, {count} replacement(s){skip_note}: {file_path}"
             )
 
         _atomic_write(path, renamed, backups=backups)
