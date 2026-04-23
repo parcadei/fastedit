@@ -466,7 +466,12 @@ _SIGCHG_EDITS: dict[str, tuple[str, str]] = {
     ),
     "typescript": (
         "export function foo(a: number): number {\n  return a;\n}\n",
-        "export function foo(a: number, b: number): number {\n  return a + b;\n}\n",
+        "export function foo(a: number, b: number): number {\n"
+        "  return a + b;\n}\n",
+    ),
+    "javascript": (
+        "export function foo(a) {\n  return a;\n}\n",
+        "export function foo(a, b) {\n  return a + b;\n}\n",
     ),
     "go": (
         "package mod\n\nfunc foo(a int) int {\n    return a\n}\n",
@@ -477,34 +482,72 @@ _SIGCHG_EDITS: dict[str, tuple[str, str]] = {
         "pub fn foo(a: i32, b: i32) -> i32 {\n    a + b\n}\n",
     ),
     "java": (
-        "public class X {\n    public static int foo(int a) { return a; }\n}\n",
-        "public class X {\n    public static int foo(int a, int b) { return a + b; }\n}\n",
+        "public class X {\n"
+        "    public static int foo(int a) {\n"
+        "        return a;\n"
+        "    }\n"
+        "}\n",
+        "public class X {\n"
+        "    public static int foo(int a, int b) {\n"
+        "        return a + b;\n"
+        "    }\n"
+        "}\n",
     ),
     "kotlin": (
         "fun foo(a: Int): Int {\n    return a\n}\n",
         "fun foo(a: Int, b: Int): Int {\n    return a + b\n}\n",
     ),
+    "ruby": (
+        "def foo(a)\n  a\nend\n",
+        "def foo(a, b)\n  a + b\nend\n",
+    ),
+    "swift": (
+        "func foo(a: Int) -> Int {\n    return a\n}\n",
+        "func foo(a: Int, b: Int) -> Int {\n    return a + b\n}\n",
+    ),
+    "php": (
+        "<?php\nfunction foo($a) {\n    return $a;\n}\n",
+        "<?php\nfunction foo($a, $b) {\n    return $a + $b;\n}\n",
+    ),
+    "c_sharp": (
+        "public class X {\n"
+        "    public static int Foo(int a) {\n"
+        "        return a;\n"
+        "    }\n"
+        "}\n",
+        "public class X {\n"
+        "    public static int Foo(int a, int b) {\n"
+        "        return a + b;\n"
+        "    }\n"
+        "}\n",
+    ),
+    "cpp": (
+        "int foo(int a) {\n    return a;\n}\n",
+        "int foo(int a, int b) {\n    return a + b;\n}\n",
+    ),
+    "c": (
+        "int foo(int a) {\n    return a;\n}\n",
+        "int foo(int a, int b) {\n    return a + b;\n}\n",
+    ),
 }
+
+# c_sharp's symbol is `Foo` (PascalCase convention). Every other lang
+# uses `foo`; the test dispatches via _SIGCHG_SYMBOLS.
+_SIGCHG_SYMBOLS: dict[str, str] = {"c_sharp": "Foo"}
 
 
 @pytest.mark.parametrize("lang", list(_SIGCHG_EDITS.keys()))
 def test_m3_signature_changed_detects_param_addition(lang: str):
-    """M3: adding a parameter registers as a signature change in every
-    language fastedit's analyze_file supports.
-
-    Languages where analyze_file cannot cleanly locate the function body
-    are xfailed with a reference to 0.6.1.
+    """M3: adding a parameter registers as a signature change across
+    all 13 languages fastedit supports (post-M4.7 outsourcing to
+    ``tldr structure``).
     """
-    old, new = _SIGCHG_EDITS[lang]
-    # Empirically tested on 2026-04-23: all six langs pass. Update the
-    # set if tree-sitter grammar changes break a lang.
-    known_broken: set[str] = set()
+    if not TLDR_AVAILABLE:
+        pytest.skip("tldr binary not on PATH")
 
-    result = signature_changed(old, new, "foo", lang)
-    if lang in known_broken:
-        pytest.xfail(
-            f"{lang} signature detection broken — flagged for 0.6.1"
-        )
+    old, new = _SIGCHG_EDITS[lang]
+    symbol = _SIGCHG_SYMBOLS.get(lang, "foo")
+    result = signature_changed(old, new, symbol, lang)
     assert result is True, (
         f"[{lang}] param-addition not detected as signature change. "
         f"old=\n{old}\nnew=\n{new}"
@@ -514,12 +557,26 @@ def test_m3_signature_changed_detects_param_addition(lang: str):
 @pytest.mark.parametrize("lang", list(_SIGCHG_EDITS.keys()))
 def test_m3_signature_unchanged_on_body_only_edit(lang: str):
     """M3 hot path: body-only edits do NOT register as signature changes
-    — so tldr subprocess isn't spawned (VAL-M3-002)."""
+    — so tldr subprocess isn't spawned (VAL-M3-002).
+
+    Fixtures all use multi-line functions so the declaration line and
+    body lines are on separate lines. One-liner functions (whole body
+    on one line) intentionally register as signature changes under the
+    M4.7 outsourced extraction — documented trade-off for 13/13 lang
+    coverage.
+    """
+    if not TLDR_AVAILABLE:
+        pytest.skip("tldr binary not on PATH")
+
     old, _ = _SIGCHG_EDITS[lang]
     body_only_map = {
         "python": "def foo(a):\n    # new comment\n    return a\n",
         "typescript": (
             "export function foo(a: number): number {\n"
+            "  // new comment\n  return a;\n}\n"
+        ),
+        "javascript": (
+            "export function foo(a) {\n"
             "  // new comment\n  return a;\n}\n"
         ),
         "go": (
@@ -532,15 +589,53 @@ def test_m3_signature_unchanged_on_body_only_edit(lang: str):
         ),
         "java": (
             "public class X {\n"
-            "    public static int foo(int a) { /* new */ return a; }\n}\n"
+            "    public static int foo(int a) {\n"
+            "        // new comment\n"
+            "        return a;\n"
+            "    }\n"
+            "}\n"
         ),
         "kotlin": "fun foo(a: Int): Int {\n    // new\n    return a\n}\n",
+        "ruby": "def foo(a)\n  # new\n  a\nend\n",
+        "swift": (
+            "func foo(a: Int) -> Int {\n"
+            "    // new\n"
+            "    return a\n"
+            "}\n"
+        ),
+        "php": (
+            "<?php\nfunction foo($a) {\n"
+            "    // new\n"
+            "    return $a;\n"
+            "}\n"
+        ),
+        "c_sharp": (
+            "public class X {\n"
+            "    public static int Foo(int a) {\n"
+            "        // new\n"
+            "        return a;\n"
+            "    }\n"
+            "}\n"
+        ),
+        "cpp": (
+            "int foo(int a) {\n"
+            "    // new\n"
+            "    return a;\n"
+            "}\n"
+        ),
+        "c": (
+            "int foo(int a) {\n"
+            "    /* new */\n"
+            "    return a;\n"
+            "}\n"
+        ),
     }
     if lang not in body_only_map:
         pytest.skip(f"no body-edit fixture for {lang}")
     new = body_only_map[lang]
 
-    result = signature_changed(old, new, "foo", lang)
+    symbol = _SIGCHG_SYMBOLS.get(lang, "foo")
+    result = signature_changed(old, new, symbol, lang)
     assert result is False, (
         f"[{lang}] body-only edit falsely registered as sig change. "
         f"old=\n{old}\nnew=\n{new}"
