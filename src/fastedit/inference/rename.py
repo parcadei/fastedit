@@ -125,13 +125,37 @@ DEFAULT_IGNORE_DIRS = frozenset({
 # Foo vs a local variable foo.
 _VALID_KIND_FILTERS = frozenset({"class", "function", "method", "variable"})
 
-# tldr `references` output assigns `kind: "other"` with confidence 0.5 to
-# string/comment substring hits. We already filter via `--min-confidence 0.9`,
-# but keep these as defensive client-side filters in case tldr's confidence
-# scoring changes across versions.
-_REFERENCE_KINDS_TO_RENAME = frozenset({
-    "call", "read", "write", "import", "type", "definition",
-})
+# tldr `references` output labels each hit with a `kind` and a
+# `confidence` (0..1). On its 4 AST-native langs (python, typescript, go,
+# rust) tldr emits semantic kinds like "call" / "import" / "read". On the
+# other 9 langs it emits `kind="other"` with confidence=1.0 for real code
+# hits and confidence=0.5 for string/comment substring hits.
+#
+# We drive the filter off confidence, not kind, so non-native langs get
+# real rename coverage. The `--min-confidence 0.9` CLI flag we pass to
+# tldr already excludes the 0.5 "other" substring hits; this client-side
+# check is belt-and-suspenders in case a tldr version skew changes the
+# scoring. Anything the CLI flag lets through, we apply.
+_MIN_REFERENCE_CONFIDENCE = 0.9
+
+
+def _ref_passes_filter(ref: dict) -> bool:
+    """Return True iff a tldr reference should participate in a rename.
+
+    Confidence-based: accept any ref whose confidence meets
+    :data:`_MIN_REFERENCE_CONFIDENCE`. Missing confidence defaults to 1.0
+    (older tldr versions didn't emit the field; the ``--min-confidence``
+    CLI flag already gated those anyway). A final safety net in
+    :func:`_apply_refs_to_content` verifies the pre-slice matches
+    ``old_name`` exactly before any rewrite happens.
+    """
+    conf = ref.get("confidence")
+    if conf is None:
+        return True
+    try:
+        return float(conf) >= _MIN_REFERENCE_CONFIDENCE
+    except (TypeError, ValueError):
+        return True
 
 
 def _iter_code_files(
@@ -408,11 +432,13 @@ def do_cross_file_rename(
         if definition.get("kind") != kind_filter:
             return {}
 
-    # Group refs by resolved path, dropping any with disallowed kind.
+    # Group refs by resolved path. Filter on confidence rather than kind so
+    # non-AST-native langs (java/kotlin/ruby/swift/php/c#/cpp/c/scala/
+    # elixir/lua) still get real coverage — they receive kind="other" with
+    # confidence=1.0 for real code hits and 0.5 for string substrings.
     refs_by_file: dict[Path, list[dict]] = {}
     for ref in data.get("references") or []:
-        kind = ref.get("kind")
-        if kind not in _REFERENCE_KINDS_TO_RENAME:
+        if not _ref_passes_filter(ref):
             continue
         file_str = ref.get("file")
         if not file_str:
@@ -496,13 +522,14 @@ def do_rename_ast(
 
     data = _run_tldr_references(old_name, path, scope="file")
 
-    # With --scope file, every reference in the payload belongs to `path`,
-    # but we still filter defensively by kind in case tldr returns noisy
-    # substring hits below the confidence threshold we didn't catch.
+    # With --scope file, every reference in the payload belongs to `path`.
+    # Filter on confidence (see _ref_passes_filter) so non-AST-native langs
+    # (kind="other" at confidence 1.0) participate normally; string/comment
+    # substring hits (confidence 0.5) are already excluded by the tldr CLI
+    # flag plus this belt-and-suspenders client check.
     refs: list[dict] = []
     for ref in data.get("references") or []:
-        kind = ref.get("kind")
-        if kind not in _REFERENCE_KINDS_TO_RENAME:
+        if not _ref_passes_filter(ref):
             continue
         refs.append(ref)
 

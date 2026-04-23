@@ -3,15 +3,14 @@
 Milestone 4.6: expand coverage beyond Python + TS happy paths to include
 Java, Rust, Go, Kotlin (required), plus Ruby, JavaScript.
 
-See docs/testing-matrix.md for the full feature x language matrix.
+Milestone 4.7: confidence-based reference filter (see
+:mod:`fastedit.inference.rename`) unblocks non-AST-native langs. tldr
+emits kind="other" on java/kotlin/ruby/swift/php/c#/cpp/c with
+confidence=1.0 for real code hits and confidence=0.5 for string-literal
+substring hits. We now accept anything with confidence >= 0.9, which
+gives real rename coverage on every lang fastedit supports.
 
-Key finding (documented):
-    do_rename_ast and check_cross_file_callers drop tldr refs with
-    kind="other". tldr emits kind="other" for every language outside
-    its AST-native set (python, typescript, go, rust). Java, Kotlin,
-    Ruby, and friends therefore cleanly return count=0 rather than
-    silently doing a regex-quality rename. Users on those langs should
-    fall back to `fastedit rename` (regex + tree-sitter skip zones).
+See docs/testing-matrix.md for the full feature x language matrix.
 """
 
 from __future__ import annotations
@@ -291,15 +290,11 @@ ALL_TESTED_LANGS = REQUIRED_LANGS + STRONGLY_RECOMMENDED_LANGS
 def test_m1_rename_ast_happy_path(lang_key: str, tmp_path: Path):
     """M1 happy path: single-file rename across languages.
 
-    Invariants (AST-native langs: python/typescript/go/rust/javascript):
+    Invariants (all 13 supported langs, post-M4.7):
       - Definition site is renamed (count >= 1).
-      - String/comment occurrences preserved (VAL-M1-002).
-
-    Non-AST-native langs (java/kotlin/ruby):
-      - do_rename_ast returns count=0 — DOCUMENTED behavior. tldr emits
-        kind="other" (grep-quality) for these langs and fastedit's
-        AST-only filter intentionally drops them to avoid unverified
-        renames. Users should fall back to `fastedit rename`.
+      - String/comment occurrences preserved for langs where tldr emits
+        kind="string"/"comment" OR confidence<=0.5 for substring hits
+        (AST-native langs + the non-native confidence-1.0 filter).
     """
     if not TLDR_AVAILABLE:
         pytest.skip("tldr binary not on PATH")
@@ -311,29 +306,20 @@ def test_m1_rename_ast_happy_path(lang_key: str, tmp_path: Path):
 
     new_content, count, skipped = do_rename_ast(path, spec.symbol, "newName")
 
-    if lang_key in TLDR_NATIVE_LANGS or lang_key == "javascript":
-        assert count >= 1, (
-            f"[{lang_key}] expected >=1 replacement, got {count}. "
-            f"new_content:\n{new_content}"
-        )
-        assert "newName" in new_content
+    assert count >= 1, (
+        f"[{lang_key}] expected >=1 replacement, got {count}. "
+        f"new_content:\n{new_content}"
+    )
+    assert "newName" in new_content
 
-        if spec.skips_strings_and_comments:
-            assert '"oldName in string"' in new_content, (
-                f"[{lang_key}] rename leaked into string literal"
-            )
-            if "# oldName in comment" in spec.rename_source:
-                assert "# oldName in comment" in new_content
-            if "// oldName in comment" in spec.rename_source:
-                assert "// oldName in comment" in new_content
-    else:
-        # Non-native: locked-in fall-through to count=0. If this ever
-        # flips (tldr gains AST support for the lang, or fastedit widens
-        # its kind filter), the assertion forces a deliberate review.
-        assert count == 0, (
-            f"[{lang_key}] unexpected non-zero count={count}. "
-            f"tldr may have gained AST support — review filter."
+    if spec.skips_strings_and_comments:
+        assert '"oldName in string"' in new_content, (
+            f"[{lang_key}] rename leaked into string literal"
         )
+        if "# oldName in comment" in spec.rename_source:
+            assert "# oldName in comment" in new_content
+        if "// oldName in comment" in spec.rename_source:
+            assert "// oldName in comment" in new_content
 
 
 @pytest.mark.parametrize("lang_key", ALL_TESTED_LANGS)
