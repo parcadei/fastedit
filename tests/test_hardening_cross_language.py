@@ -980,10 +980,123 @@ def test_m4_rust_braced_use_tree_splits(tmp_path: Path):
     ), "braced use-tree was not split"
 
 
-def test_m4_rust_nested_use_tree_flagged(tmp_path: Path):
-    """M4 Rust: nested braces ``use foo::{bar::Baz, qux::Quux};`` with
-    the moved symbol inside a nested group must be flagged as manual
-    review, NOT half-rewritten.
+# ---------------------------------------------------------------------------
+# M49 Rust: complex ``use`` trees (aliased, nested, wildcard).
+# Supersedes the old M4 "flagged for manual review" tests — 0.5.0 handles
+# these cases automatically via tree-sitter-rust.
+# ---------------------------------------------------------------------------
+
+
+def test_move_to_file_rust_aliased_use():
+    """Top-level aliased ``use a::Bar as R;`` — swap the path, keep the
+    ``as R`` clause verbatim.
+    """
+    from fastedit.inference.move_to_file import _rewrite_rust_import_line
+
+    new_text, split, reason = _rewrite_rust_import_line(
+        "use crate::a::Bar as R;\n", "Bar", "crate::b",
+    )
+    assert new_text is not None, f"expected rewrite, got None (reason={reason})"
+    assert not split, "aliased top-level use rewrites in-place, no split"
+    assert new_text == "use crate::b::Bar as R;\n", new_text
+    assert reason == ""
+
+
+def test_move_to_file_rust_nested_use_1level(tmp_path: Path):
+    """Nested 1-level: ``use a::{nested::Bar, other::Baz};`` moving Bar.
+
+    Expected:
+      use a::{other::Baz};   (or the collapsed form ``use a::other::Baz;``)
+      use crate::new::Bar;
+    """
+    from fastedit.inference.move_to_file import _rewrite_rust_import_line
+
+    new_text, split, reason = _rewrite_rust_import_line(
+        "use crate::a::{nested::Bar, other::Baz};\n",
+        "Bar",
+        "crate::new",
+    )
+    assert new_text is not None, f"reason={reason}"
+    assert split, "nested removal should split into residual + moved"
+    # Residual must NOT mention Bar; moved line must add Bar via new path.
+    assert "use crate::new::Bar;" in new_text
+    assert "Bar" in new_text  # once, on the new line
+    # Exactly ONE occurrence of Bar across the rewrite.
+    assert new_text.count("Bar") == 1, new_text
+    # Baz must be preserved at its original path.
+    assert "other::Baz" in new_text
+    assert reason == ""
+
+
+def test_move_to_file_rust_nested_use_2level():
+    """Nested 2-level: ``use a::{sub::{Bar, Qux}};`` moving Bar.
+
+    Expected:
+      use a::sub::Qux;   (the Bar-less subgroup collapses)
+      use crate::new::Bar;
+    """
+    from fastedit.inference.move_to_file import _rewrite_rust_import_line
+
+    new_text, split, reason = _rewrite_rust_import_line(
+        "use crate::a::{sub::{Bar, Qux}};\n", "Bar", "crate::new",
+    )
+    assert new_text is not None, f"reason={reason}"
+    assert split
+    assert "use crate::new::Bar;" in new_text
+    assert new_text.count("Bar") == 1
+    assert "Qux" in new_text
+    # Qux must still be reachable via ``a::sub``.
+    assert "sub" in new_text
+    assert "a::sub" in new_text.replace("crate::a::sub", "a::sub")
+    assert reason == ""
+
+
+def test_move_to_file_rust_wildcard_appends_explicit():
+    """Wildcard ``use a::*;`` — leave the glob, append an explicit import,
+    emit a manual_review advisory as the non-empty reason.
+    """
+    from fastedit.inference.move_to_file import _rewrite_rust_import_line
+
+    new_text, split, reason = _rewrite_rust_import_line(
+        "use crate::a::*;\n", "Bar", "crate::b",
+    )
+    assert new_text is not None, "wildcard should append, not flag"
+    assert split, "wildcard + explicit = two lines, split=True"
+    lines = [ln for ln in new_text.split("\n") if ln]
+    assert lines[0] == "use crate::a::*;", lines
+    assert lines[1] == "use crate::b::Bar;", lines
+    # Advisory present.
+    assert reason != ""
+    assert "wildcard" in reason.lower()
+
+
+def test_move_to_file_rust_nested_subgroup_collapses_when_empty():
+    """When the nested subgroup contained ONLY the target, the whole
+    subgroup should vanish — no empty braces left behind.
+
+    ``use a::{only::{Bar}, other};`` moving Bar → the ``only::{...}``
+    subgroup collapses entirely, leaving ``use a::other;`` + the new line.
+    """
+    from fastedit.inference.move_to_file import _rewrite_rust_import_line
+
+    new_text, split, reason = _rewrite_rust_import_line(
+        "use crate::a::{only::{Bar}, other};\n", "Bar", "crate::new",
+    )
+    assert new_text is not None, f"reason={reason}"
+    assert split
+    # No empty braces anywhere.
+    assert "{}" not in new_text, new_text
+    # No leftover ``only`` subpath (Bar was its sole content).
+    assert "only" not in new_text, new_text
+    assert "use crate::new::Bar;" in new_text
+    assert "other" in new_text
+    assert reason == ""
+
+
+def test_move_to_file_rust_wildcard_integration(tmp_path: Path):
+    """End-to-end wildcard: moving Bar from a.rs to b.rs with a caller
+    that glob-imports ``use crate::a::*;`` must leave the glob in place
+    and add the explicit import, with the plan carrying manual_review.
     """
     if not TLDR_AVAILABLE:
         pytest.skip("tldr binary not on PATH")
@@ -992,58 +1105,36 @@ def test_m4_rust_nested_use_tree_flagged(tmp_path: Path):
 
     root = _make_project(tmp_path)
     a = root / "a.rs"
-    a.write_text("pub fn Baz() -> i32 { 1 }\n")
+    a.write_text("pub fn Bar() -> i32 { 1 }\n")
     b = root / "b.rs"
-    b.write_text("pub fn Existing() -> i32 { 2 }\n")
+    b.write_text("pub fn Other() -> i32 { 2 }\n")
     caller = root / "caller.rs"
     caller.write_text(
-        "use crate::{a::{Baz}, other::Quux};\n\n"
-        "pub fn use_it() -> i32 { Baz() }\n"
+        "use crate::a::*;\n\n"
+        "pub fn use_it() -> i32 { Bar() }\n"
     )
 
     plan = move_to_file(
-        symbol="Baz",
+        symbol="Bar",
         from_file=str(a),
         to_file=str(b),
         after=None,
         project_root=root,
         dry_run=True,
     )
-    # At least one rewrite must be flagged as manual_review for the
-    # nested case. We don't require ALL refs to be flagged because
-    # tldr may also see the usage site (not an import).
+    # If tldr saw the caller's use line, the plan should include a
+    # rewrite whose reason mentions "wildcard" (manual_review advisory).
+    wildcard_rewrites = [
+        r for r in plan.import_rewrites
+        if "wildcard" in (r.get("reason") or "").lower()
+    ]
     if plan.import_rewrites:
-        assert any(
-            r.get("manual_review") for r in plan.import_rewrites
-        ), (
-            "nested use-tree not flagged for manual review: "
-            f"{plan.import_rewrites}"
-        )
-
-
-def test_m4_rust_wildcard_use_flagged(tmp_path: Path):
-    """M4 Rust: ``use foo::*;`` — wildcard imports can't be automated."""
-    if not TLDR_AVAILABLE:
-        pytest.skip("tldr binary not on PATH")
-
-    from fastedit.inference.move_to_file import _rewrite_rust_import_line
-
-    new_text, split, reason = _rewrite_rust_import_line(
-        "use crate::a::*;\n", "foo", "crate::b",
-    )
-    assert new_text is None
-    assert "wildcard" in reason.lower()
-
-
-def test_m4_rust_renamed_use_flagged():
-    """M4 Rust: ``use foo::Bar as Renamed;`` — aliased, flag."""
-    from fastedit.inference.move_to_file import _rewrite_rust_import_line
-
-    new_text, split, reason = _rewrite_rust_import_line(
-        "use crate::a::foo as bar;\n", "foo", "crate::b",
-    )
-    assert new_text is None
-    assert "renamed" in reason.lower()
+        # tldr may or may not flag the wildcard line as a reference
+        # depending on its resolver; if it does, our rewriter must have
+        # handled it with the append-explicit strategy.
+        for r in wildcard_rewrites:
+            assert "use crate::a::*;" in r["new_import"], r
+            assert "use crate::b::Bar;" in r["new_import"], r
 
 
 def test_m4_move_to_file_rejects_cross_family(tmp_path: Path):

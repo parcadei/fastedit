@@ -980,27 +980,41 @@ def _rewrite_go_import_line(
 def _rewrite_rust_import_line(
     line: str, symbol: str, new_use_path: str,
 ) -> tuple[str | None, bool, str]:
-    """Rust: ``use crate::pkg::sub::Symbol;`` with optional braced group.
+    """Rust: rewrite a ``use`` statement so ``symbol`` now resolves via
+    ``new_use_path``.
 
-    Cases handled:
+    Cases handled automatically:
 
-    * Simple: ``use crate::foo::Bar;`` → swap path, keep trailing
-      ``::Bar;``. Same mechanism as the JVM-family helper, but using
-      ``::`` as the path separator.
-    * Braced group: ``use crate::foo::{Bar, Baz};`` when moving ``Bar``
-      only — split into ``use crate::foo::{Baz};`` plus a fresh
-      ``use <new_use_path>::Bar;``.
-    * Braced single: ``use crate::foo::{Bar};`` moving Bar — collapse to
-      ``use <new_use_path>::Bar;``.
-
-    Flagged for manual review:
-
-    * Nested braces: ``use foo::{bar::Baz, qux::{One, Two}};``
-    * Wildcard: ``use foo::*;``
-    * Renamed: ``use foo::Bar as Renamed;``
+    * Simple: ``use crate::foo::Bar;`` → ``use crate::new::Bar;``.
+    * Aliased top-level: ``use crate::foo::Bar as R;`` →
+      ``use crate::new::Bar as R;`` — the ``as R`` clause is preserved
+      verbatim.
+    * Braced (flat): ``use crate::foo::{Bar, Baz};`` moving ``Bar`` →
+      ``use crate::foo::Baz;`` + ``use crate::new::Bar;``. Collapses the
+      braces when one name remains, drops the line entirely when none do.
+    * Braced with an aliased sibling: ``use crate::foo::{Bar as R, Baz};``
+      — the sibling's ``as`` clause is kept verbatim.
+    * Nested (arbitrary depth): ``use crate::foo::{sub::{Bar, Qux}};``
+      moving ``Bar`` → a new top-level ``use crate::new::Bar;`` plus the
+      original tree with ``Bar`` structurally removed (empty subgroups
+      collapse cleanly).
+    * Wildcard: ``use crate::foo::*;`` — the wildcard line is preserved
+      unchanged and an explicit ``use <new_use_path>::<symbol>;`` is
+      appended. A ``manual_review`` warning is emitted noting the glob
+      may now be unused.
 
     ``new_use_path`` is the path prefix up to (but not including) the
     symbol — e.g. ``crate::new_module`` — with no trailing ``::``.
+
+    Returns ``(new_text | None, split_flag, reason)``. ``new_text``
+    contains the replacement line(s) (possibly multi-line, joined with
+    the original newline style). ``split_flag`` is True when the
+    rewrite produced a residual import in addition to the moved-symbol
+    line. ``reason`` is non-empty iff new_text is None *or* the
+    rewrite succeeded but carries a manual_review advisory (currently
+    only the wildcard case). When ``reason`` is non-empty alongside a
+    non-None new_text, callers should treat the rewrite as applied but
+    surface the reason to the user.
     """
     stripped = line.rstrip("\n")
     newline = line[len(stripped):] or "\n"
@@ -1021,59 +1035,384 @@ def _rewrite_rust_import_line(
         return None, False, "not a use statement"
     path = s[4:].strip()
 
-    # Wildcard: not automatable.
-    if path.endswith("::*") or path == "*":
-        return None, False, "wildcard use (manual review)"
-    # Aliased rename: ``use foo::Bar as Renamed``.
-    if " as " in path:
-        return None, False, "renamed use (manual review)"
+    semi = ";" if had_semi else ""
 
-    # Braced groups. Count depth to reject nested.
+    # --- Wildcard: preserve line, append explicit import ---------------
+    # Users write ``use foo::*;`` to get every public symbol of ``foo``.
+    # We can't tell which symbols they actually use without a type
+    # checker, so the safe bounded solution is: leave the wildcard alone
+    # (other symbols may still need it), append an explicit import for
+    # the moved symbol, and warn the caller.
+    if path.endswith("::*") or path == "*":
+        wildcard_line = f"{indent}{pub_prefix}use {path}{semi}{newline}"
+        explicit_line = (
+            f"{indent}{pub_prefix}use {new_use_path}::{symbol}{semi}{newline}"
+        )
+        return (
+            wildcard_line + explicit_line,
+            True,
+            (
+                "wildcard import may now be unused \u2014 consider "
+                f"removing ``use {path};`` if ``{path[:-3] if path.endswith('::*') else path}::*`` "
+                f"was only used for ``{symbol}``"
+            ),
+        )
+
+    # --- Top-level aliased simple path: ``use a::b::Bar as R;`` --------
+    # The ``as R`` clause lives on the whole path; preserve it verbatim.
+    # We only match when the alias applies to the ENTIRE path (no
+    # braces), because an alias inside ``{...}`` is a sibling item and
+    # is handled by the braced/nested branch below.
+    if " as " in path and "{" not in path:
+        alias_idx = path.rfind(" as ")
+        head = path[:alias_idx].strip()
+        alias = path[alias_idx + 4 :].strip()
+        segments = head.split("::")
+        if not segments or segments[-1] != symbol:
+            return (
+                None,
+                False,
+                f"aliased use last segment {segments[-1]!r} != symbol",
+            )
+        rebuilt = (
+            f"{indent}{pub_prefix}use {new_use_path}::{symbol} as {alias}"
+            f"{semi}{newline}"
+        )
+        return rebuilt, False, ""
+
+    # --- Braced group (possibly nested): use tree-sitter ---------------
     if "{" in path:
+        result = _rewrite_rust_braced_use(
+            stripped=stripped,
+            pub_prefix=pub_prefix,
+            indent=indent,
+            newline=newline,
+            symbol=symbol,
+            new_use_path=new_use_path,
+            had_semi=had_semi,
+        )
+        if result is not None:
+            return result
+        # Tree-sitter unavailable / unparseable — fall back to the flat
+        # regex handler below for the simplest case, else flag.
         if path.count("{") > 1:
-            return None, False, "nested use tree (manual review)"
+            return None, False, "nested use tree (tree-sitter unavailable)"
         brace_start = path.index("{")
         if not path.endswith("}"):
             return None, False, "malformed use-tree"
         prefix = path[:brace_start].rstrip(":")
         inner = path[brace_start + 1 : -1]
         names = [n.strip() for n in inner.split(",") if n.strip()]
-        # Any nested items in the list (contain ``::`` or ``{``) → flag.
-        if any("::" in n or "{" in n or " as " in n for n in names):
-            return None, False, "nested or renamed use-tree (manual review)"
-        if symbol not in names:
+        if any("::" in n or "{" in n for n in names):
+            return None, False, "nested use-tree (tree-sitter unavailable)"
+        if symbol not in names and not any(
+            _alias_head(n) == symbol for n in names
+        ):
             return None, False, "symbol not in use-tree"
-        remaining = [n for n in names if n != symbol]
+        remaining = [n for n in names if _alias_head(n) != symbol]
         new_symbol_line = (
-            f"{indent}{pub_prefix}use {new_use_path}::{symbol}"
-            f"{';' if had_semi else ''}{newline}"
+            f"{indent}{pub_prefix}use {new_use_path}::{symbol}{semi}{newline}"
         )
         if not remaining:
-            # Group collapsed — emit only the new line.
             return new_symbol_line, False, ""
         if len(remaining) == 1:
-            # ``use prefix::<one>;`` — drop the braces.
             residual = (
-                f"{indent}{pub_prefix}use {prefix}::{remaining[0]}"
-                f"{';' if had_semi else ''}{newline}"
+                f"{indent}{pub_prefix}use {prefix}::{remaining[0]}{semi}{newline}"
             )
         else:
             joined = ", ".join(remaining)
             residual = (
-                f"{indent}{pub_prefix}use {prefix}::{{{joined}}}"
-                f"{';' if had_semi else ''}{newline}"
+                f"{indent}{pub_prefix}use {prefix}::{{{joined}}}{semi}{newline}"
             )
         return residual + new_symbol_line, True, ""
 
-    # Simple ``use foo::bar::Symbol;``
+    # --- Simple ``use foo::bar::Symbol;`` ------------------------------
     segments = path.split("::")
     if not segments or segments[-1] != symbol:
         return None, False, f"last segment {segments[-1]!r} != symbol"
     rebuilt = (
-        f"{indent}{pub_prefix}use {new_use_path}::{symbol}"
-        f"{';' if had_semi else ''}{newline}"
+        f"{indent}{pub_prefix}use {new_use_path}::{symbol}{semi}{newline}"
     )
     return rebuilt, False, ""
+
+
+def _alias_head(name: str) -> str:
+    """Given a use-list item like ``Bar`` or ``Bar as R``, return the
+    head identifier (``Bar`` in both cases). Used to match group items
+    against the moved symbol without tripping on the alias.
+    """
+    if " as " in name:
+        return name.split(" as ", 1)[0].strip()
+    return name.strip()
+
+
+def _rewrite_rust_braced_use(
+    *,
+    stripped: str,
+    pub_prefix: str,
+    indent: str,
+    newline: str,
+    symbol: str,
+    new_use_path: str,
+    had_semi: bool,
+) -> tuple[str | None, bool, str] | None:
+    """Rewrite a Rust braced ``use`` statement using tree-sitter-rust.
+
+    Handles arbitrary nesting. Returns a ``(new_text, split, reason)``
+    tuple on success, ``(None, False, reason)`` on a bounded failure
+    (symbol not found, malformed tree), or ``None`` when tree-sitter is
+    unavailable — caller then falls back to the flat regex path.
+    """
+    try:
+        import tree_sitter_rust  # type: ignore[import-not-found]
+        from tree_sitter import Language, Parser  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+
+    try:
+        lang = Language(tree_sitter_rust.language())
+        parser = Parser(lang)
+    except Exception:
+        return None
+
+    # Parse just the single stripped line so byte offsets are local.
+    src_bytes = stripped.encode("utf-8")
+    tree = parser.parse(src_bytes)
+    root = tree.root_node
+    # Find the use_declaration child.
+    use_decl = None
+    for child in root.children:
+        if child.type == "use_declaration":
+            use_decl = child
+            break
+    if use_decl is None:
+        return None, False, "could not parse use declaration"
+
+    # The interesting payload is the child after ``use`` (and before ``;``).
+    # For braced groups it's a ``scoped_use_list``.
+    payload = None
+    for child in use_decl.children:
+        if child.type in {
+            "scoped_use_list", "use_list", "scoped_identifier",
+            "use_as_clause", "use_wildcard", "identifier",
+        }:
+            payload = child
+            break
+    if payload is None:
+        return None, False, "use declaration has no payload"
+
+    src_text = stripped
+
+    def node_text(n) -> str:
+        return src_text[n.start_byte : n.end_byte]
+
+    def list_items(use_list_node):
+        """Yield direct item children of a ``use_list`` (skip punctuation)."""
+        items = []
+        for c in use_list_node.children:
+            if c.type in {"{", "}", ","}:
+                continue
+            items.append(c)
+        return items
+
+    def item_head(item_node) -> str:
+        """Return the identifier that ``item_node`` imports at the leaf.
+
+        * ``identifier`` → its text.
+        * ``use_as_clause`` → the aliased target's head (``Bar`` in
+          ``Bar as R``).
+        * ``scoped_identifier`` / ``scoped_use_list`` → the last path
+          segment's head (for scoped_identifier) or, for a scoped_use_list,
+          its own name (the group as a whole has no single symbol).
+        """
+        t = item_node.type
+        if t == "identifier":
+            return node_text(item_node)
+        if t == "use_as_clause":
+            # First child is the aliased thing.
+            for c in item_node.children:
+                if c.type in {"identifier", "scoped_identifier"}:
+                    return item_head(c)
+            return ""
+        if t == "scoped_identifier":
+            last = None
+            for c in item_node.children:
+                if c.type == "identifier":
+                    last = c
+            return node_text(last) if last else ""
+        if t == "scoped_use_list":
+            # A group like ``a::{...}`` — no single leaf.
+            return ""
+        if t == "self":
+            return "self"
+        if t == "use_wildcard":
+            return "*"
+        return ""
+
+    def contains_symbol(item_node) -> bool:
+        """Recursively check whether ``item_node`` imports ``symbol``."""
+        t = item_node.type
+        if t in {"identifier", "use_as_clause", "scoped_identifier"}:
+            return item_head(item_node) == symbol
+        if t in {"scoped_use_list", "use_list"}:
+            for sub in (
+                list_items(item_node) if t == "use_list"
+                else [
+                    c for c in item_node.children
+                    if c.type == "use_list"
+                ]
+            ):
+                if t == "use_list":
+                    if contains_symbol(sub):
+                        return True
+                else:
+                    for inner in list_items(sub):
+                        if contains_symbol(inner):
+                            return True
+        return False
+
+    def find_symbol_alias(item_node) -> str | None:
+        """If ``item_node`` imports ``symbol`` via a ``use_as_clause``,
+        return the alias string (the ``R`` in ``Bar as R``). Walks into
+        nested groups. Returns None when the symbol appears unaliased
+        or not at all.
+        """
+        t = item_node.type
+        if t == "use_as_clause":
+            if item_head(item_node) == symbol:
+                # Last identifier child is the alias.
+                last_id = None
+                for c in item_node.children:
+                    if c.type == "identifier":
+                        last_id = c
+                if last_id is not None:
+                    return node_text(last_id)
+            return None
+        if t in {"identifier", "scoped_identifier"}:
+            return None
+        if t == "use_list":
+            for inner in list_items(item_node):
+                alias = find_symbol_alias(inner)
+                if alias is not None:
+                    return alias
+            return None
+        if t == "scoped_use_list":
+            for c in item_node.children:
+                if c.type == "use_list":
+                    alias = find_symbol_alias(c)
+                    if alias is not None:
+                        return alias
+            return None
+        return None
+
+    def serialize_without_symbol(item_node) -> str | None:
+        """Return the source for ``item_node`` with ``symbol`` removed.
+
+        Returns ``None`` when the item itself is the symbol (the caller
+        should then drop it from its parent list). The returned text
+        preserves the surviving tree shape; an empty subgroup collapses
+        by returning None at that level.
+        """
+        t = item_node.type
+        if t in {"identifier", "use_as_clause", "scoped_identifier"}:
+            if item_head(item_node) == symbol:
+                return None
+            return node_text(item_node)
+        if t == "scoped_use_list":
+            # scoped_use_list := <scoped_ident or ident> :: use_list
+            head_prefix_parts: list[str] = []
+            inner_list_node = None
+            for c in item_node.children:
+                if c.type == "use_list":
+                    inner_list_node = c
+                elif c.type in {"scoped_identifier", "identifier", "::"}:
+                    head_prefix_parts.append(node_text(c))
+            if inner_list_node is None:
+                return node_text(item_node)  # shouldn't happen
+            surviving = []
+            for inner in list_items(inner_list_node):
+                piece = serialize_without_symbol(inner)
+                if piece is not None:
+                    surviving.append(piece)
+            if not surviving:
+                return None
+            head_prefix = "".join(head_prefix_parts).rstrip(":")
+            if len(surviving) == 1:
+                # Collapse single-element group.
+                piece = surviving[0]
+                # If piece is a scoped_use_list already serialized with
+                # its own prefix, joining with ``::`` still works.
+                return f"{head_prefix}::{piece}"
+            return f"{head_prefix}::{{{', '.join(surviving)}}}"
+        if t == "use_list":
+            surviving = []
+            for inner in list_items(item_node):
+                piece = serialize_without_symbol(inner)
+                if piece is not None:
+                    surviving.append(piece)
+            if not surviving:
+                return None
+            if len(surviving) == 1:
+                return surviving[0]
+            return f"{{{', '.join(surviving)}}}"
+        if t in {"self", "use_wildcard"}:
+            return node_text(item_node)
+        return node_text(item_node)
+
+    # Payload shape dispatch.
+    if payload.type != "scoped_use_list":
+        # We only handle braced groups here; the caller handles simple /
+        # aliased / wildcard before delegating.
+        return None, False, "braced helper invoked on non-braced payload"
+
+    # Confirm the symbol is somewhere inside.
+    inner_list = None
+    head_parts: list[str] = []
+    for c in payload.children:
+        if c.type == "use_list":
+            inner_list = c
+        elif c.type in {"scoped_identifier", "identifier", "crate", "::"}:
+            head_parts.append(node_text(c))
+    if inner_list is None:
+        return None, False, "scoped_use_list has no use_list child"
+
+    found = False
+    matched_alias: str | None = None
+    for item in list_items(inner_list):
+        if contains_symbol(item):
+            found = True
+            matched_alias = find_symbol_alias(item)
+            break
+    if not found:
+        return None, False, "symbol not in use-tree"
+
+    # Serialize surviving items.
+    surviving: list[str] = []
+    for item in list_items(inner_list):
+        piece = serialize_without_symbol(item)
+        if piece is not None:
+            surviving.append(piece)
+
+    semi = ";" if had_semi else ""
+    alias_suffix = f" as {matched_alias}" if matched_alias else ""
+    new_symbol_line = (
+        f"{indent}{pub_prefix}use {new_use_path}::{symbol}{alias_suffix}"
+        f"{semi}{newline}"
+    )
+
+    head_prefix = "".join(head_parts).rstrip(":")
+    if not surviving:
+        # Entire use-tree collapsed — just the new line.
+        return new_symbol_line, False, ""
+    if len(surviving) == 1:
+        residual = (
+            f"{indent}{pub_prefix}use {head_prefix}::{surviving[0]}{semi}{newline}"
+        )
+    else:
+        residual = (
+            f"{indent}{pub_prefix}use {head_prefix}::{{{', '.join(surviving)}}}{semi}{newline}"
+        )
+    return residual + new_symbol_line, True, ""
 
 
 def _rewrite_swift_import_line(
