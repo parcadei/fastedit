@@ -27,9 +27,17 @@ def delete_symbol(
 ) -> DeleteResult:
     """Delete a function, method, or class from a file using AST line ranges.
 
-    Pure deterministic operation — no model inference. Uses tldr to find the
-    exact line range of the symbol and removes it. Works across all 16
-    languages supported by tldr.
+    Pure deterministic operation — no model inference. Uses in-memory
+    tree-sitter (via ``get_ast_map_from_source``) for authoritative line
+    ranges. Works across all 16 languages supported by tree-sitter.
+
+    Prefers the in-memory path over ``get_ast_map`` (which shells out to
+    ``tldr structure``) because tldr's structure extractor has a known
+    bug where ``@decorator``-wrapped Python functions are mis-reported:
+    the decorated function's span is missing and the NEXT function
+    inherits its line numbers, silently corrupting deletes. See
+    docs/testing-matrix.md for the repro. The in-memory walker correctly
+    spans the ``decorated_definition`` AST node including the decorator.
 
     Args:
         file_path: Path to the source file.
@@ -42,12 +50,19 @@ def delete_symbol(
     Raises:
         ValueError: If the symbol is not found in the file's AST.
     """
+    from .ast_utils import get_ast_map_from_source
+
     path = Path(file_path)
     original_code = path.read_text(encoding="utf-8", errors="replace")
     original_lines = original_code.splitlines(keepends=True)
     total_lines = len(original_lines)
 
-    ast_nodes = get_ast_map(file_path, total_lines)
+    # In-memory AST — bypasses tldr's decorator-span bug.
+    ast_nodes = get_ast_map_from_source(original_code, file_path)
+    if not ast_nodes:
+        # Fall back to the tldr-backed path for any language / parser
+        # combination the in-memory walker doesn't support yet.
+        ast_nodes = get_ast_map(file_path, total_lines)
 
     # Find the target node (supports 'Class.method' qualification)
     target = _resolve_symbol(symbol, ast_nodes)
