@@ -752,6 +752,17 @@ def main():
     else:
         parser.print_help()
 
+    # Passive update notice on exit. Silent when up-to-date, network-down,
+    # or FASTEDIT_NO_UPDATE_CHECK=1. Runs after the command so it never
+    # delays user-visible output.
+    try:
+        from .update_check import get_update_notice
+        notice = get_update_notice()
+        if notice:
+            sys.stderr.write("\n" + notice + "\n")
+    except Exception:
+        pass
+
 
 if __name__ == "__main__":
     main()

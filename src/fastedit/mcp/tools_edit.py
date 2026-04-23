@@ -8,25 +8,58 @@ from pathlib import Path
 
 from ..data_gen.ast_analyzer import detect_language
 from ..inference.chunked_merge import BatchEdit, batch_chunked_merge, chunked_merge
+from ..update_check import get_update_notice_async
 from .server import _atomic_write, mcp
+
+# Once-per-server-session flag — attaches the update banner to the first
+# successful edit response so the host LLM can relay it to the human.
+_UPDATE_NOTICE_SHOWN = False
+_update_notice_lock = asyncio.Lock()
+
+
+async def _maybe_append_update_notice(message: str) -> str:
+    """Append a one-line PyPI update notice to the tool response, at most
+    once per server session. Silent on any failure."""
+    global _UPDATE_NOTICE_SHOWN
+    if _UPDATE_NOTICE_SHOWN:
+        return message
+    async with _update_notice_lock:
+        if _UPDATE_NOTICE_SHOWN:
+            return message
+        try:
+            notice = await get_update_notice_async()
+        except Exception:
+            notice = None
+        _UPDATE_NOTICE_SHOWN = True
+        if notice:
+            return f"{message}\n\n{notice}"
+    return message
 
 
 @mcp.tool(
     description=(
-        "Edit code via fast local 1.7B model. Always set `replace` or `after`. "
-        "Editing inside a function (1-2s): replace='func_name' + snippet with "
-        "'# ... existing code ...' markers around changed lines. "
-        "Works on ANY size function — even 500+ lines. The model only sees "
-        "the ~35-line region around your change, not the whole function. "
-        "Inserting new code (instant): after='existing_func', snippet is the new code. "
-        "Replacing a whole function: replace='func_name', snippet is the full replacement. "
-        "Without replace/after, the model processes the entire file (slow). "
-        "preserve_siblings=True (with replace='ClassName'): edit a subset of a class's "
-        "members (a field, one method, etc.) without enumerating siblings you want to "
-        "keep. Your snippet only needs to contain the class shell + the members you're "
-        "changing/adding; unmentioned sibling methods/members are carried over from the "
-        "original. Use this when a surgical change spans only a fraction of a class. "
-        "Zero model tokens — pure AST splice."
+        "Apply a code edit via tree-sitter AST + a fast local 1.7B merge model.\n"
+        "\n"
+        "USE CASES (choose the pattern, then write the minimal snippet):\n"
+        "• add-guard / prelude (insert at TOP):  replace='func', snippet='<new_lines>\\n#...\\n'\n"
+        "• append (insert at BOTTOM):            replace='func', snippet='#...\\n<new_lines>\\n'\n"
+        "• edit in the MIDDLE:                   replace='func', snippet='<anchor>\\n<new_lines>\\n#...\\n'\n"
+        "• replace the whole function:           replace='func', snippet=<full new body>\n"
+        "• new symbol after an existing one:     after='existing', snippet=<new code>   (pure AST, 0 tokens)\n"
+        "• surgical class-member edit:           replace='Class', preserve_siblings=True, snippet=<class shell + changed members>\n"
+        "\n"
+        "MARKERS (all accepted — pick the shortest):\n"
+        "• #...   — 2 tokens (Python / Ruby / Elixir)\n"
+        "• //...  — 2 tokens (JS / TS / Rust / Go / Java / C / C++ / Swift / Kotlin / C# / PHP)\n"
+        "• …      — 1 token (U+2026, language-agnostic)\n"
+        "• Legacy '# ... existing code ...' / '// ... existing code ...' still work.\n"
+        "\n"
+        "SIGNATURE: replace='name' auto-preserves the target's def/fn/class signature — do NOT "
+        "repeat it in the snippet. Just send the new body (or body fragment + marker).\n"
+        "\n"
+        "Always set replace or after. Omitting both triggers a whole-file merge — slow and "
+        "unreliable on files > 150 lines. Works on functions of any size — the model sees only "
+        "a ~35-line region around your change, never the full file."
     ),
 )
 async def fast_edit(
@@ -152,18 +185,21 @@ async def fast_edit(
             )
 
         _atomic_write(path, result.merged_code, backups=backups)
-        return f"Applied edit to {file_path}. {metrics}"
+        return await _maybe_append_update_notice(
+            f"Applied edit to {file_path}. {metrics}"
+        )
 
 
 @mcp.tool(
     description=(
-        "Apply multiple edits to one file in a single call. `edits` is a JSON list "
-        "of objects with `snippet` and optional `after`/`replace`/`preserve_siblings` "
-        "keys. Edits are applied sequentially — each sees the result of the previous. "
-        "One round-trip instead of N separate fast_edit calls. "
-        "Per-edit `preserve_siblings: true` (with `replace: 'ClassName'`) carries over "
-        "any named sibling members (methods, nested classes) that exist in the original "
-        "class but aren't mentioned in that edit's snippet — zero model tokens."
+        "Apply multiple edits to one file in a single call. `edits` is a JSON list of "
+        "objects, each with a `snippet` key plus optional `after` / `replace` / "
+        "`preserve_siblings`. Edits apply sequentially — each sees the result of the "
+        "previous. One round-trip instead of N separate fast_edit calls.\n"
+        "\n"
+        "Each edit follows the same minimal-snippet patterns as fast_edit: see its "
+        "description for USE CASES + MARKERS. Short markers #... / //... / … are accepted; "
+        "replace= auto-preserves the target's signature (do not repeat it in the snippet)."
     ),
 )
 async def fast_batch_edit(file_path: str, edits: str) -> str:
@@ -254,7 +290,9 @@ async def fast_batch_edit(file_path: str, edits: str) -> str:
             )
 
         _atomic_write(path, result.merged_code, backups=backups)
-        return f"Applied {len(batch)} edits to {file_path}. {metrics}"
+        return await _maybe_append_update_notice(
+            f"Applied {len(batch)} edits to {file_path}. {metrics}"
+        )
 
 
 @mcp.tool(

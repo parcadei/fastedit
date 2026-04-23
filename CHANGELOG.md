@@ -2,6 +2,32 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.2.6 — 2026-04-23
+
+### Added
+- **PyPI version check with MCP-aware surfacing.** On the first successful `fast_edit` /
+  `fast_batch_edit` call in an MCP server session, if a newer release exists on PyPI, the
+  tool response gets a one-line banner appended so the host LLM can relay the notice to the
+  human who actually owns the environment. The model can't `pip install`, so the notice
+  targets the user through the model's next turn. Subsequent calls in the same session are
+  silent. CLI runs get a stderr notice on exit. Checks cache for 24 h in
+  `~/.cache/fastedit/update-check.json`. Silent when up-to-date, on network failure, or when
+  `FASTEDIT_NO_UPDATE_CHECK=1` is set. Uses stdlib `urllib` — no new dependencies.
+
+### Changed
+- **MCP tool instructions rewritten around minimal-payload patterns.** The `fast_edit` tool
+  description and the top-level FastMCP instructions now lead with the six use-case patterns
+  (add-guard / append / middle / full-replace / after / preserve_siblings) paired with the
+  minimal snippet shape for each. The marker-position semantics (top/bottom/middle insert)
+  and short marker forms (`#...` / `//...` / `…`) shipped in 0.2.4 are now surfaced to every
+  LLM that picks up the tool, not buried in the changelog. Signature auto-preserve (0.2.2)
+  is stated explicitly: `replace='name'` carries the def/fn/class line, so the snippet should
+  omit it.
+- **README teaser updated** to use the minimal form — short `#...` marker, no signature line.
+  Shows what the calling agent actually writes today, not the 0.2.0 long form.
+
+No breaking changes — all existing payloads keep working.
+
 ## 0.2.5 — 2026-04-23
 
 ### Fixed

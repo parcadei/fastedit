@@ -40,15 +40,14 @@ FastEdit eliminates location tokens entirely. Instead of making the model repeat
 ```python
 # FastEdit — model writes ONLY the change
 fastedit edit api.py --replace process --snippet '
-def process(data):
     try:
-        # ... existing code ...
+        #...
     except Error as e:
         return {"error": str(e)}
 '
 ```
 
-`--replace process` uses tree-sitter to find the function. `# ... existing code ...` tells the system to preserve untouched lines. The model never outputs old code — zero tokens spent on location.
+`--replace process` uses tree-sitter to find the function and auto-preserves its signature. `#...` (short form) tells the system to preserve untouched lines. The model never outputs old code — zero tokens spent on location, zero tokens spent on the signature.
 
 ## The three edit modes
 
@@ -93,10 +92,10 @@ FASTEDIT_BACKEND=llm FASTEDIT_LLM_API_BASE=http://localhost:1234/v1 fastedit edi
 fastedit read src/app.py
 
 # Edit a function (AST-scoped merge)
+# replace= auto-preserves the signature; #... marks the rest of the body.
 fastedit edit src/app.py --replace handle_request --snippet '
-def handle_request(data):
     validate(data)
-    # ... existing code ...
+    #...
     logger.info("done")
 '
 
