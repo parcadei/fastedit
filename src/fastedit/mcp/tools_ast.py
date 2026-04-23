@@ -310,3 +310,64 @@ async def fast_undo(file_path: str) -> str:
         diff_text = "".join(diff)
 
         return f"Reverted {file_path} to previous state.\n\n{diff_text}"
+
+
+@mcp.tool(
+    description=(
+        "Move a function, method, or class from one file to another and "
+        "automatically rewrite `from X import symbol` / "
+        "`import { symbol } from \"./X\"` statements in every dependent "
+        "file. Uses tldr for importer discovery — instant, 0 model tokens. "
+        "Use this for cross-file refactors. For same-file reorganisation "
+        "use fast_move instead. Pass dry_run=True to preview the plan."
+    ),
+)
+async def fast_move_to_file(
+    symbol: str,
+    from_file: str,
+    to_file: str,
+    after: str | None = None,
+    dry_run: bool = False,
+) -> str:
+    """Move a symbol across files and rewrite every consumer's imports.
+
+    Rejects same-file moves (hint: use fast_move). Rejects when the
+    destination file already defines the symbol (conflict). Emits a plan
+    message listing every importer it rewrote + a manual-review tail for
+    cases the auto-rewriter can't handle (wildcard imports, re-exports,
+    non-standard module specifiers).
+    """
+    from ..inference.caller_safety import _find_project_root
+    from ..inference.move_to_file import move_to_file
+
+    ctx = mcp.get_context()
+    lc = ctx.request_context.lifespan_context
+    file_locks: dict = lc["file_locks"]
+
+    from_path = Path(from_file)
+    to_path = Path(to_file)
+
+    if not from_path.exists():
+        return f"Error: source file not found: {from_file}"
+    if not to_path.exists():
+        return f"Error: target file not found: {to_file}"
+
+    project_root = _find_project_root(from_path)
+
+    # Hold locks on BOTH files for the duration of the move so a
+    # concurrent edit doesn't interleave with our two-file write.
+    async with file_locks[from_file]:
+        async with file_locks[to_file]:
+            try:
+                plan = move_to_file(
+                    symbol=symbol,
+                    from_file=str(from_path),
+                    to_file=str(to_path),
+                    after=after,
+                    project_root=project_root,
+                    dry_run=dry_run,
+                )
+            except ValueError as e:
+                return f"Error: {e}"
+
+    return plan.message

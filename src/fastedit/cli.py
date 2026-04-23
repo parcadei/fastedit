@@ -636,6 +636,44 @@ def cmd_rename_all(args):
         f"{total_count} replacement(s).{skip_note} 0 model tokens."
     )
 
+def cmd_move_to_file(args):
+    """Move a symbol from one file to another and rewrite consumer imports.
+
+    Delegates to :func:`fastedit.inference.move_to_file.move_to_file`. The
+    helper handles AST extraction, destination insertion, and import
+    rewrites in every importer discovered via ``tldr references``. On
+    ``--dry-run`` nothing is written — we just print the plan.
+    """
+    from .inference.caller_safety import _find_project_root
+    from .inference.move_to_file import move_to_file
+
+    from_path = Path(args.from_file)
+    to_path = Path(args.to_file)
+
+    if not from_path.exists():
+        print(f"Error: source file not found: {args.from_file}", file=sys.stderr)
+        sys.exit(1)
+    if not to_path.exists():
+        print(f"Error: target file not found: {args.to_file}", file=sys.stderr)
+        sys.exit(1)
+
+    project_root = _find_project_root(from_path)
+
+    try:
+        plan = move_to_file(
+            symbol=args.symbol,
+            from_file=str(from_path),
+            to_file=str(to_path),
+            after=args.after,
+            project_root=project_root,
+            dry_run=args.dry_run,
+        )
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(plan.message)
+
 
 def _format_search_results(stdout: str, mode: str) -> str:
     text = stdout.strip()
@@ -865,6 +903,25 @@ def main():
              "(uses tldr for AST-verified lookup).",
     )
 
+    # --- move-to-file (no model) ---
+    mtf_p = sub.add_parser(
+        "move-to-file",
+        help="Move a symbol from one file to another and rewrite imports",
+    )
+    mtf_p.add_argument("symbol", help="Symbol to move")
+    mtf_p.add_argument("from_file", help="Source file (must contain the symbol)")
+    mtf_p.add_argument("to_file", help="Destination file (must exist, same language)")
+    mtf_p.add_argument(
+        "--after",
+        default=None,
+        help="Insert after this symbol in the destination (default: end of file)",
+    )
+    mtf_p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview the plan without writing any files",
+    )
+
     # --- undo (no model) ---
     undo_p = sub.add_parser("undo", help="Revert the last edit to a file")
     undo_p.add_argument("file", help="Path to source file")
@@ -909,6 +966,8 @@ def main():
         cmd_rename(args)
     elif args.command == "rename-all":
         cmd_rename_all(args)
+    elif args.command == "move-to-file":
+        cmd_move_to_file(args)
     elif args.command == "undo":
         cmd_undo(args)
     elif args.command == "pull":
