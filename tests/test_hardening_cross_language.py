@@ -415,20 +415,16 @@ def test_m2_cross_file_callers_detected(lang_key: str, tmp_path: Path):
     )
 
 
-@pytest.mark.parametrize("lang_key", REQUIRED_LANGS)
+@pytest.mark.parametrize("lang_key", ALL_TESTED_LANGS)
 def test_m2_force_override_is_monotonic(lang_key: str, tmp_path: Path):
-    """M2 monotonicity: force=False refuses -> force=True proceeds.
+    """M2 monotonicity across all supported langs.
 
-    CLI-level exercise for Python (where delete_symbol is robust). Other
-    languages deferred to the per-lang AST delete test suite.
+    Exercises the CLI delete path end-to-end; underlying delete_symbol
+    uses the in-memory tree-sitter AST walker which covers every lang
+    fastedit supports.
     """
     if not TLDR_AVAILABLE:
         pytest.skip("tldr binary not on PATH")
-    if lang_key != "python":
-        pytest.skip(
-            f"[{lang_key}] CLI delete path: per-lang AST delete tested "
-            f"in test_ast_analyzer.py"
-        )
 
     spec = LANG_SPECS[lang_key]
     root = _make_project(tmp_path)
