@@ -473,6 +473,15 @@ def deterministic_edit(
         # identifiers and assignment targets are excluded from this
         # check (they're too common and genuinely new peer statements
         # often share identifiers with the body).
+        #
+        # Add-guard refinement (v0.2.5): flow tokens that sit INSIDE a
+        # new block opener (``if X:``, ``if (y) {``) are part of the
+        # new guard body, not modifications of the existing flow. We
+        # detect this by indent: if a flow-token new line is indented
+        # deeper than some earlier new line ending in ``:`` / ``{``,
+        # it's nested inside a new block and doesn't count toward
+        # overlap. Only flow tokens at the OUTER-most new indent level
+        # can plausibly modify the original body in place.
         _FLOW_TOKENS = frozenset({
             "return", "raise", "yield", "throw", "panic!",
             "break", "continue", "goto",
@@ -482,8 +491,32 @@ def deterministic_edit(
             for i in range(1, len(orig_lines))
             if orig_lines[i].strip()
         }
+
+        def _is_nested_in_new_opener(
+            entry: tuple[str, int, int | None, str],
+        ) -> bool:
+            """True if this new-line is indented inside an earlier new
+            opener (``... :`` or ``... {``) within ``new_entries``."""
+            si_e, line = entry[1], entry[3]
+            line_indent = len(line) - len(line.lstrip())
+            for other in new_entries:
+                if other[1] >= si_e:
+                    break
+                other_line = other[3]
+                if not other_line.strip():
+                    continue
+                other_stripped = other_line.rstrip()
+                if not other_stripped.endswith((":", "{")):
+                    continue
+                other_indent = len(other_line) - len(other_line.lstrip())
+                if line_indent > other_indent:
+                    return True
+            return False
+
         new_leading_tokens = {
-            _leading_token(e[3]) for e in new_entries if e[3].strip()
+            _leading_token(e[3])
+            for e in new_entries
+            if e[3].strip() and not _is_nested_in_new_opener(e)
         }
         overlap = (
             (new_leading_tokens & body_leading_tokens) & _FLOW_TOKENS
@@ -507,22 +540,57 @@ def deterministic_edit(
         elif new_before and not new_after:
             # Pattern: <new_lines> + marker → insert at TOP of body.
             #
-            # Guard against ``wrap_block`` false positives: if the LAST
+            # Guard against ``wrap_block`` false positives. If the LAST
             # new-line before the marker ends with a block opener
-            # (``:`` in Python, ``{`` in C-family), the user's intent
-            # is almost certainly to WRAP the preserved body in a new
-            # scope, not to insert flat peers above it. The correct
-            # semantic there is handled elsewhere (marker-section
-            # indent-adjust), so we decline — the standard path will
-            # return None and the model takes over.
-            last_new_stripped = new_before[-1][3].rstrip()
-            if last_new_stripped.endswith((":", "{")):
-                _log.info(
-                    "Text-match: position-TOP declined — trailing "
-                    "new-line %r looks like a block opener (wrap_block "
-                    "pattern); falling through",
-                    last_new_stripped,
-                )
+            # (``:`` in Python, ``{`` in C-family — where ``{`` is the
+            # final non-whitespace token, i.e. actually opening a block
+            # rather than closing one), we *might* be wrapping the
+            # preserved body in a new scope. But add-guard patterns —
+            # inserting an early-return or validation block at the top
+            # of a function — also begin with a ``:``/``{`` opener and
+            # are NOT wrap_block. Distinguishing signal: indent
+            # alignment between the block-opener and the marker.
+            #
+            #   * marker_indent  >  opener_indent → genuine wrap_block
+            #     (marker sits INSIDE the opened scope). Fall through
+            #     to the model; deterministic path can't emit correctly.
+            #
+            #   * marker_indent <= opener_indent → add-guard pattern
+            #     (opener's body lives entirely within ``new_before``;
+            #     marker is a parallel peer, not wrapped). Proceed with
+            #     top-insertion semantics — this is the common case
+            #     (early-return guards, input validation).
+            last_new_line = new_before[-1][3]
+            last_new_stripped = last_new_line.rstrip()
+            looks_like_opener = last_new_stripped.endswith((":", "{"))
+            if looks_like_opener:
+                opener_indent = len(last_new_line) - len(last_new_line.lstrip())
+                marker_line = snip_raw[marker_si]
+                marker_indent = len(marker_line) - len(marker_line.lstrip())
+                if marker_indent > opener_indent:
+                    _log.info(
+                        "Text-match: position-TOP declined — trailing "
+                        "new-line %r is a block opener and marker is "
+                        "nested deeper (marker_indent=%d > "
+                        "opener_indent=%d); genuine wrap_block, "
+                        "falling through",
+                        last_new_stripped, marker_indent, opener_indent,
+                    )
+                    # fall through to < 2 anchors rejection
+                else:
+                    _log.info(
+                        "Text-match: position-TOP add-guard detected — "
+                        "opener %r at indent %d, marker at indent %d "
+                        "(parallel); proceeding with top insertion",
+                        last_new_stripped, opener_indent, marker_indent,
+                    )
+                    return _emit_position_top(
+                        orig_lines, snip_raw, new_before,
+                        signature_anchor=(
+                            context_entries[0] if context_entries else None
+                        ),
+                        original_func=original_func,
+                    )
             else:
                 # Preserve signature (line 0 of original) if present,
                 # then emit the new lines adjusted to body indent, then
