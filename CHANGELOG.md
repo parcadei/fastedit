@@ -2,6 +2,27 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.2.7 — 2026-04-23
+
+### Fixed
+- **`fastedit-hook` blanket-denying non-code Edits.** The PreToolUse hook that
+  redirects Claude Code's built-in `Edit` tool to `fast_edit` was firing on every
+  file — Markdown, YAML, TOML, JSON, plain text — even though FastEdit can't
+  parse those formats. Callers saw `error: Use fast_edit MCP tool instead` when
+  trying to edit READMEs, changelogs, or config files. Fixed by whitelisting
+  the extensions FastEdit actually handles (.py, .js/.jsx/.mjs/.cjs, .ts/.tsx,
+  .rs, .go, .java, .c/.h, .cpp/.cc/.cxx/.hpp, .rb, .php, .swift, .kt/.kts,
+  .cs, .ex/.exs). Non-code Edits now fall through to the built-in tool as
+  they should.
+
+### Changed
+- **README install section is now PEP 668-aware.** Dropped the bare
+  `pip install fastedits` instructions — they fail out of the box on Homebrew
+  and distro-managed Python. New default: `uv tool install 'fastedits[mlx]'`,
+  with pipx and plain-venv alternatives listed underneath. tldr is correctly
+  labeled as optional (only read/search tools need it; editing runs pure
+  in-memory tree-sitter).
+
 ## 0.2.6 — 2026-04-23
 
 ### Added
