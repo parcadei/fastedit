@@ -85,10 +85,20 @@ fastedit pull --model bf16        # Linux / GPU
 The CLI lands at `~/.local/bin/fastedit`. Upgrade later with:
 
 ```bash
-uv tool upgrade --refresh fastedits
+uv tool upgrade fastedits
 ```
 
-The `--refresh` flag bypasses uv's 10-minute package-index cache. Without it, `uv tool upgrade` can report "Nothing to upgrade" even when a newer release is live on PyPI — the cache hasn't rechecked yet. `--refresh` is also useful right after a `uv publish` when PyPI's CDN may not have fully propagated.
+If it says "Nothing to upgrade" right after a fresh release lands on PyPI, uv's 10-minute package-index cache is stale. Clear it and retry:
+
+```bash
+uv cache clean fastedits && uv tool upgrade fastedits
+```
+
+Or force a clean reinstall:
+
+```bash
+uv tool install --reinstall 'fastedits[mlx,mcp]'
+```
 
 Drop the `mcp` extra if you only want the CLI. Drop `mlx` / `vllm` if you only want to point at an external LLM server.
 
