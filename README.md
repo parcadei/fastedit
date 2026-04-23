@@ -68,32 +68,35 @@ When deterministic matching can't resolve the edit (indent structure changes, fu
 ### Recommended — `uv tool` (handles the venv for you)
 
 ```bash
-# Apple Silicon (local 1.7B model via MLX):
-uv tool install 'fastedits[mlx]'
+# Apple Silicon (local 1.7B model via MLX) + MCP server:
+uv tool install 'fastedits[mlx,mcp]'
 
-# GPU servers (vLLM backend):
-uv tool install 'fastedits[vllm]'
+# GPU servers (vLLM backend) + MCP server:
+uv tool install 'fastedits[vllm,mcp]'
 
-# Generic (for pointing at an external OpenAI-compatible server):
-uv tool install fastedits
+# Generic (external OpenAI-compatible server) + MCP server:
+uv tool install 'fastedits[mcp]'
 
 # Download the 1.7B merge model (~3 GB, one-time):
-fastedit pull
+fastedit pull --model mlx-8bit    # Apple Silicon
+fastedit pull --model bf16        # Linux / GPU
 ```
 
 The CLI lands at `~/.local/bin/fastedit`. Upgrade later with `uv tool upgrade fastedits`.
+
+Drop the `mcp` extra if you only want the CLI. Drop `mlx` / `vllm` if you only want to point at an external LLM server.
 
 ### Alternatives
 
 ```bash
 # pipx (same idea, different tool):
-pipx install 'fastedits[mlx]' && fastedit pull
+pipx install 'fastedits[mlx,mcp]' && fastedit pull --model mlx-8bit
 
 # Plain venv:
 python3 -m venv ~/.venvs/fastedit
 source ~/.venvs/fastedit/bin/activate
-pip install 'fastedits[mlx]'
-fastedit pull
+pip install 'fastedits[mlx,mcp]'
+fastedit pull --model mlx-8bit
 ```
 
 Avoid `pip install fastedits` into a Homebrew / distro-managed Python — it will fail with `error: externally-managed-environment` (PEP 668).
@@ -144,24 +147,21 @@ fastedit diff src/app.py
 
 ## MCP server
 
-FastEdit runs as an MCP server for AI agents (Claude Code, Cursor, etc.):
+FastEdit runs as an MCP server for AI agents (Claude Code, Cursor, etc.). If you installed with the `mcp` extra above, the server binary is already on PATH as `fastedit-mcp`.
 
-```bash
-pip install fastedits[mcp]
-python -m fastedit.mcp_server
-```
-
-Add to Claude Code config:
+Add to Claude Code config (`~/.claude.json` or project `.mcp.json`):
 ```json
 {
   "mcpServers": {
     "fastedit": {
-      "command": "python",
-      "args": ["-m", "fastedit.mcp_server"]
+      "command": "fastedit-mcp",
+      "type": "stdio"
     }
   }
 }
 ```
+
+No hardcoded python paths, no `-m` invocation. Works wherever `fastedit` is on PATH.
 
 10 tools: `fast_edit`, `fast_batch_edit`, `fast_multi_edit`, `fast_read`, `fast_search`, `fast_diff`, `fast_delete`, `fast_move`, `fast_rename`, `fast_undo`
 
@@ -184,7 +184,7 @@ Add to `.claude/settings.json` or your project `.claude.json`:
 }
 ```
 
-`fastedit-hook` is installed automatically with `pip install fastedits` — no paths, no `python3` vs `python` issues.
+`fastedit-hook` is installed automatically with `uv tool install fastedits` — no paths, no `python3` vs `python` issues.
 
 ## The model
 

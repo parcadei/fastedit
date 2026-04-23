@@ -1,6 +1,6 @@
 [project]
 name = "fastedits"
-version = "0.2.8"
+version = "0.2.9"
 description = "AST-aware code editing — 45% fewer output tokens than unified diffs"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -41,6 +41,7 @@ mcp = [
 [project.scripts]
 fastedit = "fastedit.cli:main"
 fastedit-hook = "fastedit.hook:main"
+fastedit-mcp = "fastedit.mcp_server:main"
 
 [build-system]
 requires = ["hatchling"]

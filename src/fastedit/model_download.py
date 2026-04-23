@@ -61,10 +61,13 @@ def get_model_path(
         if local.is_dir():
             return str(local.resolve())
 
-    # 3. Cache directory (already downloaded)
+    # 3. Cache directory (already downloaded) — require actual weight files,
+    # not just metadata. Previously `any(iterdir())` treated a partial cache
+    # (config.json + tokenizer.json, no safetensors) as complete, so
+    # `fastedit pull` reported success without downloading the weights.
     cache = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
     cached_path = cache / name
-    if cached_path.is_dir() and any(cached_path.iterdir()):
+    if cached_path.is_dir() and any(cached_path.glob("*.safetensors")):
         return str(cached_path)
 
     # 4. Auto-download subfolder from HuggingFace

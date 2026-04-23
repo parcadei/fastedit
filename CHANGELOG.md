@@ -2,6 +2,17 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.2.9 — 2026-04-23
+
+### Added
+- **`fastedit-mcp` console entry point.** The MCP server is now installable as a standalone binary alongside `fastedit` and `fastedit-hook`, so MCP config files can use `"command": "fastedit-mcp"` with no hardcoded venv paths, no `python -m` invocation, no `python` vs `python3` ambiguity. Works identically in Claude Code, Cursor, Continue, and any other MCP host.
+
+### Fixed
+- **`fastedit pull` silently skipping weight download.** The cache-hit check used `any(cached_path.iterdir())`, which returned True on a partial cache (config.json + tokenizer.json present, `.safetensors` shards missing). `fastedit pull` then reported `Model ready` without downloading the weights, and every subsequent edit call failed at inference time with a cryptic model-load error. The check now requires at least one `*.safetensors` file in the cache before returning, so partial caches trigger a real download.
+
+### Changed
+- **README install + MCP setup aligned with how the package actually ships.** Primary install commands now include the `mcp` extra (`uv tool install 'fastedits[mlx,mcp]'` on Apple Silicon, `[vllm,mcp]` on GPU, `[mcp]` for external-server setups) — previously users who followed the README ended up with the MCP server importable but its `fastmcp` dependency missing, and got `ModuleNotFoundError: No module named 'mcp'` on first connect. `fastedit pull` examples now use the required `--model mlx-8bit` / `--model bf16` flag (`--model` became required in 0.2.8). The MCP config example now uses `"command": "fastedit-mcp"` (the new entry point) instead of `"command": "python", "args": ["-m", "fastedit.mcp_server"]`.
+
 ## 0.2.8 — 2026-04-23
 
 ### Fixed

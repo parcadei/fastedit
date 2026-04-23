@@ -1032,7 +1032,7 @@ wheels = [
 
 [[package]]
 name = "fastedits"
-version = "0.2.5"
+version = "0.2.9"
 source = { editable = "." }
 dependencies = [
     { name = "huggingface-hub" },
