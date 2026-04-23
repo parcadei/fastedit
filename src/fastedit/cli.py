@@ -722,8 +722,8 @@ def main():
 
     # pull
     pull_p = sub.add_parser("pull", help="Pull the merge model from HuggingFace (~3GB)")
-    pull_p.add_argument("--model", default="fastedit-1.7b-mlx-8bit",
-                        help="Model name (default: fastedit-1.7b-mlx-8bit)")
+    pull_p.add_argument("--model", required=True, choices=["mlx-8bit", "bf16"],
+                        help="Model to download. Use mlx-8bit on Apple Silicon (MLX), bf16 on Linux GPU (vLLM).")
 
     args = parser.parse_args()
 

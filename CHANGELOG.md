@@ -2,6 +2,11 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.2.8 — 2026-04-23
+
+### Fixed
+- **`fastedit pull` broken default.** The CLI's `--model` default was `fastedit-1.7b-mlx-8bit`, a legacy long-form name that `model_download.py` no longer registers (valid names are `mlx-8bit` and `bf16`). Running `fastedit pull` with no args raised `RuntimeError: Unknown model 'fastedit-1.7b-mlx-8bit'`. Fixed by making `--model` required with `choices=["mlx-8bit", "bf16"]` — no silent platform default, argparse prints both options on error, and Linux/GPU users aren't tricked into downloading MLX weights they can't run.
+
 ## 0.2.7 — 2026-04-23
 
 ### Fixed
