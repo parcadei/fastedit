@@ -2,6 +2,33 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.5.0 — 2026-04-23
+
+### Added
+- **`fast_move_to_file` MCP tool + `fastedit move-to-file` CLI** — relocate a symbol cross-file with automatic import rewrites across all 13 supported languages (Python, TS/JS, Java, Kotlin, Rust, Go, Swift, C#, Ruby, PHP, Scala, Elixir, Lua, C/C++). Rust `use` trees handled via tree-sitter: simple, braced, arbitrary-depth nested, aliased (`as Name`), and wildcard (`*`) — the wildcard case appends an explicit import alongside the glob and surfaces an advisory note. Pass `--dry-run` for preview.
+- **`--only <kind>` on `fast_rename_all` / `kind_filter` on `fast_rename_all` MCP tool** — restrict rename to `class | function | method | variable`. Resolved via tldr's structural classification, not regex.
+- **`--dry-run` on `fastedit rename` / `dry_run=True` on `fast_rename` MCP tool** — parity with `rename-all`.
+- **`--force` on `fastedit delete` / `force=True` on `fast_delete`** — override the new cross-file caller safety check.
+
+### Changed
+- **`fast_rename` and `fast_rename_all` AST-verified across all 13 supported languages** via `tldr references`. Strings/comments/docstrings are structurally skipped using tldr's confidence axis — real code hits at 1.0, string/comment substring noise at 0.5. On AST-native langs (Python, TS/JS, Go, Rust), refs are classified as function/method/call/import/read/variable; on the other langs the same confidence filter still gives AST-verified-quality matching. No per-language AST walk in fastedit.
+- **`fast_delete` runs a cross-file caller safety check** before deleting. Refuses with a structured caller-location message (file:line:kind, up to 10 rows) if the symbol has references in other files, and suggests `fast_rename_all` as a migration path. Pass `--force` / `force=True` to bypass. Falls open with a warning note when tldr is unavailable — infra failures never fail-closed. Works across all 13 languages.
+- **`fast_edit` appends an impact note** when `replace=<name>` changes the function's signature line. Reports caller counts and points at `tldr impact` / `fast_search` for detailed review. Purely informational — the edit always proceeds. Signature detection outsourced to `tldr structure` (13/13 lang coverage via tldr's per-definition `signature` field). Hot path stays subprocess-free for body-only edits (0.052ms p50 overhead verified on unchanged-signature edits).
+- **Architectural refactor:** fastedit now outsources per-language AST work to tldr wherever tldr already exposes the primitive. Kind classification, signature extraction, reference discovery, and import location all go through tldr. Net code reduction in `caller_safety.py` and `rename.py` despite the feature additions.
+- **MCP server instructions, per-tool descriptions, CLI help, README, and `claude-skill/SKILL.md`** all synchronized to reflect the new capabilities.
+
+### Fixed
+- **UTF-8 BOM line-1 rename bug** — `_char_col_to_byte_offset` was translating character index to byte offset while tldr already emits byte columns, causing an off-by-3 misalignment on line-1 symbols of BOM-prefixed files. Replaced with `_tldr_col_to_byte_offset` that uses tldr's column directly. Multi-byte chars before the symbol on later lines are handled correctly too.
+- **`delete_symbol` no longer drops `@decorator` / `@annotation` lines** above the deleted symbol. Root cause: upstream `tldr structure` reported the wrong line-span for decorated defs. Switched to in-memory AST via `get_ast_map_from_source`.
+- **`get_ast_map` debug log no longer leaks to stdout** on empty/near-empty files (surfaced during `fast_move_to_file` smoke testing). Demoted from `_log.warning` to `_log.debug`; a regression test locks stdout cleanliness.
+- **Zero-match `rename-all` message** no longer says "word-boundary" (stale from the pre-AST-verified impl). Updated to "AST-verified via tldr — strings/comments/vendor dirs excluded"; regression test locks the wording for both the MCP and CLI surfaces.
+- **Rust `use` tree rewriting** for `fast_move_to_file` now handles nested (arbitrary depth), aliased (`as Name`), and wildcard (`*`) cases via tree-sitter-rust. Wildcard case appends an explicit import for the moved symbol alongside the existing glob and surfaces an advisory note in the plan.
+
+### Tests
+- **756 passed** (up from 598 in 0.4.1, +158 new). Zero failures, zero xfails. 29 skipped (all intentional — per-language paths where a subsystem genuinely doesn't apply, not hidden failures).
+- 91 tests from the hardening milestone (65 cross-language parametrized, 15 adversarial, 5 property/invariant, 6 tool-integration), 24 from the outsource refactor, plus regression locks on message wording, BOM line-1, decorator preservation, and Rust complex `use` cases.
+- Language coverage matrix published at `docs/testing-matrix.md`: **M1, M2, M3, and M4 all verified at 13/13 languages**.
+
 ## 0.4.1 — 2026-04-23
 
 ### Fixed
