@@ -150,6 +150,117 @@ def _adjust_indent(
     return indent_char * target_indent + new_line.lstrip()
 
 
+def _infer_body_indent(orig_lines: list[str]) -> tuple[int, str]:
+    """Infer body indentation of a function from its original lines.
+
+    Returns ``(indent_count, indent_char)``. The indent char is ``\\t``
+    when the first indented non-empty line starts with a tab, else a
+    single space. Falls back to 4 spaces when the original has no
+    indented lines (unusual — e.g. single-line body).
+    """
+    for ln in orig_lines[1:]:
+        if ln.strip():
+            stripped_len = len(ln) - len(ln.lstrip())
+            if stripped_len > 0:
+                indent_char = "\t" if ln[0] == "\t" else " "
+                return stripped_len, indent_char
+            # Non-indented non-blank line at body level is unusual but
+            # possible (e.g. top-level free-standing snippet). Keep
+            # looking for an indented anchor.
+    return 4, " "
+
+
+def _reindent_new_lines(
+    new_entries: list[tuple[str, int, int | None, str]],
+    target_indent: int,
+    indent_char: str,
+) -> list[str]:
+    """Re-indent snippet "new" lines relative to a shared base indent.
+
+    The smallest indent among non-blank new lines becomes the
+    ``target_indent``; other lines preserve their relative offset. This
+    preserves the internal structure of multi-line snippets (nested
+    blocks, continuations) while aligning to the body's indent depth.
+    """
+    texts = [e[3] for e in new_entries]
+    non_blank = [t for t in texts if t.strip()]
+    if not non_blank:
+        return list(texts)
+    base = min(len(t) - len(t.lstrip()) for t in non_blank)
+    out: list[str] = []
+    for t in texts:
+        if not t.strip():
+            out.append("")
+            continue
+        curr = len(t) - len(t.lstrip())
+        rel = curr - base
+        out.append(indent_char * (target_indent + rel) + t.lstrip())
+    return out
+
+
+def _emit_position_top(
+    orig_lines: list[str],
+    snip_raw: list[str],
+    new_before: list[tuple[str, int, int | None, str]],
+    signature_anchor: tuple[str, int, int | None, str] | None,
+    original_func: str,
+) -> str:
+    """Emit body with new lines at the TOP.
+
+    Structure:
+      * Signature line(s) from the original (preserves decorators,
+        multi-line defs, etc. — we take everything up through the
+        signature anchor's orig index, defaulting to line 0 if no
+        anchor is present).
+      * Re-indented new lines at body indent.
+      * Remaining body lines verbatim.
+    """
+    sig_end = (signature_anchor[2] + 1) if signature_anchor else 1
+    sig_end = max(sig_end, 1)
+    prefix = orig_lines[:sig_end]
+    rest = orig_lines[sig_end:]
+
+    target_indent, indent_char = _infer_body_indent(orig_lines)
+    re_indented = _reindent_new_lines(new_before, target_indent, indent_char)
+
+    result = list(prefix) + re_indented + list(rest)
+    merged = "\n".join(result)
+    if original_func.endswith("\n") and not merged.endswith("\n"):
+        merged += "\n"
+    _log.info(
+        "Text-match: marker-position TOP insertion — %d new lines above body",
+        len(re_indented),
+    )
+    return merged
+
+
+def _emit_position_bottom(
+    orig_lines: list[str],
+    snip_raw: list[str],
+    new_after: list[tuple[str, int, int | None, str]],
+    signature_anchor: tuple[str, int, int | None, str] | None,
+    original_func: str,
+) -> str:
+    """Emit body with new lines at the BOTTOM.
+
+    Structure:
+      * All original lines verbatim.
+      * Re-indented new lines appended at body indent.
+    """
+    target_indent, indent_char = _infer_body_indent(orig_lines)
+    re_indented = _reindent_new_lines(new_after, target_indent, indent_char)
+
+    result = list(orig_lines) + re_indented
+    merged = "\n".join(result)
+    if original_func.endswith("\n") and not merged.endswith("\n"):
+        merged += "\n"
+    _log.info(
+        "Text-match: marker-position BOTTOM insertion — %d new lines below body",
+        len(re_indented),
+    )
+    return merged
+
+
 def deterministic_edit(
     original_func: str,
     snippet: str,
@@ -231,6 +342,130 @@ def deterministic_edit(
 
     # Need at least 2 context anchors for confident matching
     context_entries = [c for c in classified if c[0] == "context"]
+
+    # ── Marker-position semantics (v0.2.4) ──
+    # When the snippet has a marker but ZERO body anchors (only the
+    # signature line is matched, if at all), infer position from marker
+    # placement:
+    #   * ``<new_lines> + marker`` (all new lines BEFORE the marker)
+    #         → insert new_lines at the TOP of the function body.
+    #   * ``marker + <new_lines>`` (all new lines AFTER the marker)
+    #         → insert new_lines at the BOTTOM of the function body.
+    # Abuse-resistance: requires ``body_anchors`` (context matches beyond
+    # line 0) to be empty. If the snippet has ANY overlapping context
+    # with the body, the standard anchor-based path runs — guarding
+    # against models accidentally dropping into position mode when they
+    # meant something else. See module docstring / CHANGELOG 0.2.4.
+    body_anchors = [c for c in context_entries if c[2] > 0]
+    marker_entries = [c for c in classified if c[0] == "marker"]
+    new_entries = [c for c in classified if c[0] == "new"]
+
+    # Abuse-resistance helper: extract the leading significant token
+    # of a line (the part before any whitespace / punctuation). Used to
+    # detect "structural overlap" with the original body even when no
+    # literal line matches — e.g. a snippet ``return {...modified}``
+    # doesn't match any body line verbatim, but its ``return`` leading
+    # token clearly signals a MODIFICATION of the existing return
+    # statement rather than an ADDITION of a new peer line. In that
+    # case position semantics would be wrong; fall through to the model.
+    def _leading_token(line: str) -> str:
+        s = line.strip()
+        if not s:
+            return ""
+        # Split on whitespace or opening brackets/parens
+        i = 0
+        while i < len(s) and s[i] not in " \t(){}[]<>=,;:":
+            i += 1
+        return s[:i]
+
+    if (
+        len(body_anchors) == 0
+        and len(marker_entries) == 1
+        and len(new_entries) >= 1
+    ):
+        marker_si = marker_entries[0][1]
+        new_before = [e for e in new_entries if e[1] < marker_si]
+        new_after = [e for e in new_entries if e[1] > marker_si]
+
+        # Structural-overlap guard: if any "new" line's leading token
+        # (``return``, ``raise``, ``yield``, etc.) matches the leading
+        # token of some ORIGINAL body line, the author likely means to
+        # modify that line in place — defer to the model. Plain
+        # identifiers and assignment targets are excluded from this
+        # check (they're too common and genuinely new peer statements
+        # often share identifiers with the body).
+        _FLOW_TOKENS = frozenset({
+            "return", "raise", "yield", "throw", "panic!",
+            "break", "continue", "goto",
+        })
+        body_leading_tokens = {
+            _leading_token(orig_lines[i])
+            for i in range(1, len(orig_lines))
+            if orig_lines[i].strip()
+        }
+        new_leading_tokens = {
+            _leading_token(e[3]) for e in new_entries if e[3].strip()
+        }
+        overlap = (
+            (new_leading_tokens & body_leading_tokens) & _FLOW_TOKENS
+        )
+        if overlap:
+            _log.info(
+                "Text-match: position-mode declined — new-line leading "
+                "token(s) %s overlap body flow tokens; falling through",
+                overlap,
+            )
+        elif new_before and new_after:
+            # Ambiguous: new lines flank the marker without any body
+            # anchors to pin the position. Don't guess — fall through to
+            # the standard "< 2 anchors" rejection so the model can
+            # decide semantically.
+            _log.info(
+                "Text-match: marker-position mode ambiguous "
+                "(new lines on both sides of marker, no body anchors) "
+                "— falling back to model",
+            )
+        elif new_before and not new_after:
+            # Pattern: <new_lines> + marker → insert at TOP of body.
+            #
+            # Guard against ``wrap_block`` false positives: if the LAST
+            # new-line before the marker ends with a block opener
+            # (``:`` in Python, ``{`` in C-family), the user's intent
+            # is almost certainly to WRAP the preserved body in a new
+            # scope, not to insert flat peers above it. The correct
+            # semantic there is handled elsewhere (marker-section
+            # indent-adjust), so we decline — the standard path will
+            # return None and the model takes over.
+            last_new_stripped = new_before[-1][3].rstrip()
+            if last_new_stripped.endswith((":", "{")):
+                _log.info(
+                    "Text-match: position-TOP declined — trailing "
+                    "new-line %r looks like a block opener (wrap_block "
+                    "pattern); falling through",
+                    last_new_stripped,
+                )
+            else:
+                # Preserve signature (line 0 of original) if present,
+                # then emit the new lines adjusted to body indent, then
+                # the rest of the original body verbatim.
+                return _emit_position_top(
+                    orig_lines, snip_raw, new_before,
+                    signature_anchor=(
+                        context_entries[0] if context_entries else None
+                    ),
+                    original_func=original_func,
+                )
+        elif new_after and not new_before:
+            # Pattern: marker + <new_lines> → insert at BOTTOM of body.
+            return _emit_position_bottom(
+                orig_lines, snip_raw, new_after,
+                signature_anchor=(
+                    context_entries[0] if context_entries else None
+                ),
+                original_func=original_func,
+            )
+        # else: marker with no new lines → no-op edit; fall through.
+
     if len(context_entries) < 2:
         _log.info(
             "Text-match: only %d context anchor(s), need ≥2 — falling back to model",
