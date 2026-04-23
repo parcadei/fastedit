@@ -1,6 +1,6 @@
 [project]
 name = "fastedits"
-version = "0.2.2"
+version = "0.2.3"
 description = "AST-aware code editing — 45% fewer output tokens than unified diffs"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -48,6 +48,33 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fastedit"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/fastedit/**/*.py",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "MODEL_CARD.md",
+    "pyproject.toml",
+]
+exclude = [
+    "models",
+    "data",
+    "release",
+    "dist",
+    "tests",
+    "configs",
+    "specs",
+    "claude-skill",
+    ".venv",
+    "uv.lock",
+    "CLAUDE.md",
+    "*.jsonl",
+    "*.safetensors",
+    "*.gguf",
+    "*.bin",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

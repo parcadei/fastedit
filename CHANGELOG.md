@@ -2,6 +2,12 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.3] — 2026-04-23
+
+### Fixed
+- `fast_edit` with `replace=<method_name>` now correctly handles partial edits inside a class method. The deterministic fast path previously retained old method body lines alongside the new ones when the snippet used `# ... existing code ...` markers with minimal context, silently corrupting the output. Regression test covers both Python methods and one non-Python equivalent.
+- Added `[tool.hatch.build.targets.sdist]` config to pyproject.toml — prevents a 1.6 GB sdist on release builds by explicitly listing what to include/exclude. Previously this config was only applied locally in the release workspace and got lost on clean builds.
+
 ## [0.2.2] — 2026-04-23
 
 ### Fixed
@@ -31,6 +37,7 @@ All notable changes to FastEdit are documented in this file. Format: [Keep a Cha
 ## [0.1.0]
 Initial release.
 
+[0.2.3]: https://github.com/parcadei/fastedit/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/parcadei/fastedit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/parcadei/fastedit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/parcadei/fastedit/compare/v0.1.0...v0.2.0
