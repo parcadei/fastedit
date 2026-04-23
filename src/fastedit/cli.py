@@ -514,6 +514,50 @@ def cmd_rename(args):
     )
     print("".join(diff), end="")
 
+def cmd_rename_all(args):
+    """Rename a symbol across every supported file in a directory tree."""
+    from .inference.rename import do_cross_file_rename
+    from .mcp.backup import BackupStore, _atomic_write
+
+    root = Path(args.root)
+    if not root.is_dir():
+        print(f"Error: directory not found: {args.root}", file=sys.stderr)
+        sys.exit(1)
+
+    plan = do_cross_file_rename(root, args.old_name, args.new_name)
+    if not plan:
+        print(
+            f"No occurrences of '{args.old_name}' found under {args.root} "
+            f"(word-boundary, excluding strings/comments/vendor dirs).",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    total_count = sum(count for _, count, _ in plan.values())
+    total_skipped = sum(skipped for _, _, skipped in plan.values())
+
+    if args.dry_run:
+        print(
+            f"Dry run: would rename '{args.old_name}' -> '{args.new_name}' in "
+            f"{len(plan)} file(s), {total_count} replacement(s)"
+            + (f" (skipping {total_skipped} in strings/comments)" if total_skipped else "")
+            + ":"
+        )
+        for path, (_, count, skipped) in sorted(plan.items()):
+            skip_note = f" ({skipped} skipped)" if skipped else ""
+            print(f"  {path} — {count} replacement(s){skip_note}")
+        return
+
+    backups = BackupStore()
+    for path, (new_content, _, _) in plan.items():
+        _atomic_write(path, new_content, backups=backups)
+
+    skip_note = f" (skipped {total_skipped} in strings/comments)" if total_skipped else ""
+    print(
+        f"Renamed '{args.old_name}' -> '{args.new_name}' in {len(plan)} file(s), "
+        f"{total_count} replacement(s).{skip_note} 0 model tokens."
+    )
+
 
 def _format_search_results(stdout: str, mode: str) -> str:
     text = stdout.strip()
@@ -716,6 +760,19 @@ def main():
     rn_p.add_argument("old_name", help="Current symbol name")
     rn_p.add_argument("new_name", help="New symbol name")
 
+    # rename-all (cross-file rename, no model)
+    ra_p = sub.add_parser(
+        "rename-all",
+        help="Rename a symbol across every supported file in a directory",
+    )
+    ra_p.add_argument("root", help="Directory to walk")
+    ra_p.add_argument("old_name", help="Current symbol name")
+    ra_p.add_argument("new_name", help="New symbol name")
+    ra_p.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview which files would change without writing",
+    )
+
     # --- undo (no model) ---
     undo_p = sub.add_parser("undo", help="Revert the last edit to a file")
     undo_p.add_argument("file", help="Path to source file")
@@ -758,6 +815,8 @@ def main():
         cmd_move(args)
     elif args.command == "rename":
         cmd_rename(args)
+    elif args.command == "rename-all":
+        cmd_rename_all(args)
     elif args.command == "undo":
         cmd_undo(args)
     elif args.command == "pull":

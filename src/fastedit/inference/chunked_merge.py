@@ -316,6 +316,78 @@ def _merge_preserve_siblings(
     )
 
 
+
+def _extract_signature_via_ast(
+    source: str,
+    language: str | None,
+    target_start_line: int,
+    target_end_line: int,
+    fallback_line: str,
+) -> str:
+    """Return the full signature of a function/method/class, handling
+    multi-line parameter lists.
+
+    Uses tree-sitter's ``body`` field to find where the body begins; the
+    signature is everything from the node's start byte up to (not including)
+    the body's start byte. This correctly captures multi-line ``def foo(\n    a,\n    b,\n):``
+    shapes that the prior heuristic (``original_lines[func_start]``) truncated to
+    ``def foo(``, silently producing unclosed parens in the merged output.
+
+    Falls back to ``fallback_line`` when:
+    - language is None or unsupported
+    - tree-sitter parsing fails
+    - no function-like node matches the target byte range
+    - the matching node has no ``body`` field (unusual grammar)
+    """
+    if not language:
+        return fallback_line
+    try:
+        from ..data_gen.ast_analyzer import parse_code
+        tree = parse_code(source, language)
+    except Exception:
+        return fallback_line
+
+    src_bytes = source.encode("utf-8")
+    # tree-sitter rows are 0-indexed; ASTNode.line_start is 1-indexed.
+    target_row = target_start_line - 1
+
+    def walk(node):
+        # Match any function/method/class-like node that starts on the
+        # target row AND has a body field with a later start byte.
+        if node.start_point[0] == target_row:
+            # Most grammars expose the body via a named field called "body"
+            # (Python, Rust, Go, JS/TS, Java, C/C++, Ruby, Swift, PHP, C#).
+            body = node.child_by_field_name("body")
+            if body is None:
+                # Kotlin uses an unnamed "function_body" child; Elixir parses
+                # `def foo(a) do ... end` as a call with a "do_block" child.
+                for child in node.children:
+                    if child.type in ("function_body", "do_block"):
+                        body = child
+                        break
+            if body and body.start_byte > node.start_byte:
+                return src_bytes[node.start_byte:body.start_byte].decode(
+                    "utf-8", errors="replace",
+                )
+        for child in node.children:
+            # Skip branches that can't contain the target
+            if child.start_point[0] > target_end_line - 1:
+                break
+            if child.end_point[0] < target_row:
+                continue
+            result = walk(child)
+            if result is not None:
+                return result
+        return None
+
+    sig = walk(tree.root_node)
+    if sig is None:
+        return fallback_line
+    # Trim trailing whitespace/newlines, then re-terminate with a single \n
+    # so the prepended signature forms exactly one well-formed line prefix.
+    return sig.rstrip() + "\n"
+
+
 def chunked_merge(
     original_code: str,
     snippet: str,
@@ -493,12 +565,21 @@ def chunked_merge(
                 and func_start < len(original_lines)
                 and not _snippet_has_target_signature(snippet, replace)
             ):
-                target_signature_line = original_lines[func_start]
-                # Preserve the caller's trailing-newline shape: snippet may
-                # or may not end in a newline; we only care that the prepended
-                # signature is terminated correctly so it forms its own line.
-                if not target_signature_line.endswith("\n"):
-                    target_signature_line += "\n"
+                # Multi-line signatures (def foo(\n    a,\n    b,\n):) require
+                # walking the AST to find where the body begins. The old
+                # approach grabbed only line[func_start] — the ``def foo(``
+                # line — and dropped the continuation, producing unclosed
+                # parens. _extract_signature_via_ast returns the full span
+                # up to (not including) the body and falls back to the
+                # single-line behavior for unusual grammars.
+                fallback = original_lines[func_start]
+                if not fallback.endswith("\n"):
+                    fallback += "\n"
+                target_signature_line = _extract_signature_via_ast(
+                    original_code, language,
+                    target_node.line_start, target_node.line_end,
+                    fallback,
+                )
                 snippet = target_signature_line + snippet
                 _log.info(
                     "replace='%s': snippet missing signature, auto-prepended "

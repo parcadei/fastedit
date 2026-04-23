@@ -1,4 +1,4 @@
-"""MCP tools for AST operations: fast_delete, fast_move, fast_rename, fast_undo."""
+"""MCP tools for AST operations: fast_delete, fast_move, fast_rename, fast_rename_all, fast_undo."""
 
 from __future__ import annotations
 
@@ -160,12 +160,76 @@ async def fast_rename(file_path: str, old_name: str, new_name: str) -> str:
             f"{count} replacement(s).{skip_note} 0 model tokens.\n\n{diff_text}"
         )
 
+@mcp.tool(
+    description=(
+        "Rename a symbol across every supported code file under a directory "
+        "(cross-file rename). Uses word-boundary matching + tree-sitter per "
+        "file to skip strings, comments, and docstrings. Prunes .git, "
+        "node_modules, __pycache__, target, dist, vendor, and other common "
+        "vendor/build dirs. Pass dry_run=True to preview which files would "
+        "change without writing. Not scope-aware — renames every matching "
+        "identifier, so unique names are safer than short common ones. For "
+        "scope-aware refactors use an LSP-backed tool. Instant, no model."
+    ),
+)
+async def fast_rename_all(
+    root_dir: str,
+    old_name: str,
+    new_name: str,
+    dry_run: bool = False,
+) -> str:
+    """Rename all occurrences of a symbol across a directory tree."""
+    from ..inference.rename import do_cross_file_rename
+
+    ctx = mcp.get_context()
+    lc = ctx.request_context.lifespan_context
+    backups: dict = lc["backups"]
+    file_locks: dict = lc["file_locks"]
+
+    root = Path(root_dir)
+    if not root.is_dir():
+        return f"Error: directory not found: {root_dir}"
+
+    plan = do_cross_file_rename(root, old_name, new_name)
+    if not plan:
+        return (
+            f"No occurrences of '{old_name}' found under {root_dir} "
+            f"(word-boundary match, excluding strings/comments/vendor dirs)."
+        )
+
+    total_count = sum(count for _, count, _ in plan.values())
+    total_skipped = sum(skipped for _, _, skipped in plan.values())
+
+    if dry_run:
+        lines = [
+            f"Dry run: would rename '{old_name}' -> '{new_name}' in "
+            f"{len(plan)} file(s), {total_count} replacement(s)"
+            f"{f' (skipping {total_skipped} in strings/comments)' if total_skipped else ''}:",
+            "",
+        ]
+        for path, (_, count, skipped) in sorted(plan.items()):
+            skip_note = f" ({skipped} skipped)" if skipped else ""
+            lines.append(f"  {path} — {count} replacement(s){skip_note}")
+        return "\n".join(lines)
+
+    # Apply. Lock each file individually so concurrent callers on unrelated
+    # files don't serialize through a single global lock.
+    for path, (new_content, _, _) in plan.items():
+        async with file_locks[str(path)]:
+            _atomic_write(path, new_content, backups=backups)
+
+    skip_note = f" (skipped {total_skipped} in strings/comments)" if total_skipped else ""
+    return (
+        f"Renamed '{old_name}' -> '{new_name}' in {len(plan)} file(s), "
+        f"{total_count} replacement(s).{skip_note} 0 model tokens."
+    )
+
 
 @mcp.tool(
     description=(
         "Undo the last edit to a file. Restores the file to its state before "
         "the most recent fast_edit, fast_batch_edit, fast_delete, fast_move, "
-        "or fast_rename operation. One level of undo per file. Instant, no model."
+        "fast_rename, or fast_rename_all operation. One level of undo per file. Instant, no model."
     ),
 )
 async def fast_undo(file_path: str) -> str:

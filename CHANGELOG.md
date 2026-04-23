@@ -2,6 +2,14 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.4.0 — 2026-04-23
+
+### Added
+- **`fast_rename_all` MCP tool + `fastedit rename-all` CLI** — cross-file symbol rename. Walks every supported code file under a directory, applies word-boundary rename, skips matches inside strings/comments/docstrings via tree-sitter. Prunes `.git`, `node_modules`, `__pycache__`, `target`, `dist`, `vendor`, and other common vendor/build dirs. Also prunes any directory containing a `pyvenv.cfg` (PEP 405 venv marker) so non-standard venv names like `.venv311`, `myenv`, `virtualenv` don't escape the filter. Pass `--dry-run` / `dry_run=True` to preview. Symlinks are not followed (prevents double-rename). Same-name rename is a guarded no-op. Not scope-aware (text matching with string/comment skip zones, not LSP) — unique names are safer than short common identifiers. Instant, no model. 11-case test suite covers substring collisions, dotfile dirs, binary files, and venv pruning.
+
+### Fixed
+- **Multi-line signature auto-preserve bug.** `fast_edit` with `replace='func_name'` and a body-only snippet corrupted output when the target had a multi-line parameter list (`def foo(\n    a,\n    b,\n):`). The auto-preserve path at `chunked_merge.py:496` grabbed only the first line of the signature (`def foo(`) and dropped the continuation, producing unclosed parens. Replaced the line-grab heuristic with a tree-sitter lookup of the function's `body` field — the signature is now everything from the node's start to the body's start, regardless of how many lines the parameter list spans. Verified across all 13 supported languages: Python, JavaScript, TypeScript, Rust, Go, Java, Ruby, Swift, C, C++, C#, PHP, plus Kotlin (uses unnamed `function_body` child — handled by fallback) and Elixir (parses `def foo(a) do ... end` as a call with a `do_block` child — handled by fallback). Falls back to single-line behavior for unknown grammars. 14-case parametrized regression lock plus 5 end-to-end scenario tests (single-line preserve no-regression, multi-line params, return annotations, Rust, TypeScript).
+
 ## 0.3.2 — 2026-04-23
 
 ### Fixed

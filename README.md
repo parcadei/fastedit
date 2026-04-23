@@ -146,6 +146,10 @@ fastedit delete src/app.py deprecated_handler
 fastedit move src/app.py helper_func --after main
 fastedit rename src/app.py old_name new_name
 
+# Cross-file rename — walk a directory, skip vendor/build dirs
+fastedit rename-all src/ old_name new_name
+fastedit rename-all src/ old_name new_name --dry-run
+
 # Undo last edit / show diff
 fastedit undo src/app.py
 fastedit diff src/app.py
@@ -180,7 +184,7 @@ Or add the entry to `~/.claude.json` / project `.mcp.json` by hand:
 
 No hardcoded python paths, no `-m` invocation. Works wherever `fastedit` is on PATH.
 
-10 tools: `fast_edit`, `fast_batch_edit`, `fast_multi_edit`, `fast_read`, `fast_search`, `fast_diff`, `fast_delete`, `fast_move`, `fast_rename`, `fast_undo`
+11 tools: `fast_edit`, `fast_batch_edit`, `fast_multi_edit`, `fast_read`, `fast_search`, `fast_diff`, `fast_delete`, `fast_move`, `fast_rename`, `fast_rename_all`, `fast_undo`
 
 ### Diagnosing issues
 

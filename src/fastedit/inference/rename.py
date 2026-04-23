@@ -98,3 +98,106 @@ def do_rename(
 
     skipped = len(list(pattern.finditer(original))) - count
     return renamed, count, skipped
+
+# ---------------------------------------------------------------------------
+# Cross-file rename
+# ---------------------------------------------------------------------------
+
+# Default directory names to skip when walking. Rename passes that walk into
+# vendor trees are almost always a bug, and the performance cost of re-renaming
+# a million vendored files is real, so we prune aggressively. Users who need
+# to rename inside these can point rename-all directly at the subdirectory.
+DEFAULT_IGNORE_DIRS = frozenset({
+    ".git", ".hg", ".svn", ".jj",
+    "node_modules", ".npm", "bower_components", ".yarn",
+    "__pycache__", ".venv", "venv", "env", ".env",
+    ".mypy_cache", ".pytest_cache", ".tox", ".ruff_cache", ".hypothesis",
+    "target", ".cargo",
+    "build", "dist", "out", ".next", ".nuxt", ".output",
+    "vendor", "Godeps",
+    ".gradle", ".idea", ".vscode",
+    "coverage", ".coverage", "htmlcov",
+})
+
+
+def _iter_code_files(
+    root: "Path",
+    supported_exts: set[str],
+    ignore_dirs: set[str],
+):
+    """Yield Path objects for files under root whose suffix is in supported_exts.
+
+    Prunes ignore_dirs at every directory level without descending into them.
+    Also prunes any directory containing a Python venv marker (pyvenv.cfg),
+    which catches non-standard venv names like .venv311, myenv, virtualenv
+    that aren't in DEFAULT_IGNORE_DIRS. Uses os.walk so we can mutate
+    dirnames in place (Path.rglob does not). followlinks is False so
+    symlinks aren't descended — prevents double-rename when a project has
+    a symlink pointing back into its own tree.
+    """
+    import os
+    from pathlib import Path
+
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        dp = Path(dirpath)
+        # Prune by basename and by PEP 405 venv marker.
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in ignore_dirs and not (dp / d / "pyvenv.cfg").exists()
+        ]
+        for name in filenames:
+            if Path(name).suffix.lower() in supported_exts:
+                yield dp / name
+
+
+def do_cross_file_rename(
+    root_dir,
+    old_name: str,
+    new_name: str,
+    supported_exts: set[str] | None = None,
+    ignore_dirs: set[str] | None = None,
+) -> dict:
+    """Rename old_name -> new_name across all supported code files under root_dir.
+
+    Uses word-boundary matching via do_rename, skipping strings/comments via
+    tree-sitter per file. Does NOT write any files — returns a plan that
+    callers can apply atomically or preview (dry-run).
+
+    Args:
+        root_dir: Path (or str) to walk.
+        old_name: Symbol name to find.
+        new_name: Replacement name.
+        supported_exts: File suffixes to consider (.py/.ts/...). Defaults to
+            fastedit's EXTENSION_TO_LANGUAGE keys.
+        ignore_dirs: Directory basenames to skip. Defaults to DEFAULT_IGNORE_DIRS.
+
+    Returns:
+        Dict mapping Path -> (new_content, replacement_count, skipped_count)
+        for every file where replacement_count > 0. Files with zero matches
+        are omitted. Binary / unreadable files are silently skipped. An
+        empty dict is returned when old_name == new_name (no-op guard).
+    """
+    from pathlib import Path
+
+    from ..data_gen.ast_analyzer import EXTENSION_TO_LANGUAGE, detect_language
+
+    if old_name == new_name:
+        return {}
+
+    root = Path(root_dir)
+    exts = supported_exts if supported_exts is not None else set(EXTENSION_TO_LANGUAGE.keys())
+    ignore = ignore_dirs if ignore_dirs is not None else DEFAULT_IGNORE_DIRS
+
+    plan: dict = {}
+    for path in _iter_code_files(root, exts, ignore):
+        try:
+            original = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if old_name not in original:
+            continue
+        language = detect_language(path)
+        renamed, count, skipped = do_rename(original, old_name, new_name, language)
+        if count > 0:
+            plan[path] = (renamed, count, skipped)
+    return plan
