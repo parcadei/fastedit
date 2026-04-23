@@ -2,6 +2,11 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.2.5 — 2026-04-23
+
+### Fixed
+- **Refined `wrap_block` guard.** The guard introduced in 0.2.4 was over-aggressive — it would block any marker-position snippet whose first new line ended with `:` or `{`, which caught the very common "add-guard" pattern (inserting an early-return guard at the top of a function). The guard now compares indent alignment between the block-opener and the marker: if they're at the same indent, it's an add-guard (deterministic path runs); if the marker is deeper than the block-opener, it's a genuine wrap-block (falls through to the model, as before). Unblocks the single most common `modify_inside` fixture pattern for tool-call savings.
+
 ## 0.2.4 — 2026-04-23
 
 ### Added
