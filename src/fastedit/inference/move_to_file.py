@@ -8,29 +8,34 @@ Design:
     * Source span detection reuses :mod:`.ast_utils` (``get_ast_map`` +
       ``_resolve_symbol``) — the same AST pass that backs ``delete_symbol``
       and ``move_symbol``. No duplication.
-    * Consumer discovery + per-symbol column data runs through
-      ``tldr references <symbol> <root> --kinds import --scope workspace``.
-      The helper :func:`_run_tldr_import_refs` is local to this module to
-      avoid cross-module coupling, but mirrors the fall-open semantics
-      of :func:`fastedit.inference.rename._run_tldr_references`.
+    * Consumer discovery runs through ``tldr references <symbol> <root>``
+      at workspace scope. On tldr's AST-native langs (python, typescript,
+      go, rust) we filter by ``kind == "import"``. On the other 9 langs
+      tldr emits ``kind == "other"``, so we fall back to a text-level
+      heuristic — a per-language regex that recognizes that language's
+      import syntax — applied to the reference's ``context`` line.
     * Writes are staged and applied atomically at the end so a crash
-      mid-plan leaves the tree coherent (we call ``_atomic_write`` which
-      also snapshots into ``BackupStore`` for ``fast_undo``).
+      mid-plan leaves the tree coherent (``_atomic_write`` snapshots into
+      ``BackupStore`` for ``fast_undo``).
 
-Happy-path scope:
-    * Python: ``from <module> import <symbol>`` (including multi-name
-      imports: the moved symbol is split onto its own line, pointing at
-      the new module).
-    * TypeScript / TSX / JavaScript: ``import { <symbol> } from "<path>"``
-      with relative paths (same-dir / parent-dir). Other specifiers on
-      the same line are kept on the original import.
+Milestone 4.7: per-language import rewriters. Python + JS/TS still use
+the hand-tuned rewriters below; java, kotlin, go, rust, swift, c#, ruby,
+php, scala, elixir, lua, c, and cpp each get a thin rewriter that:
 
-Out of scope (flagged in plan as "not_rewritten"):
-    * Wildcard imports (``from x import *``, ``import * as x from ...``)
-    * Re-exports (barrel files), dynamic imports, conditional imports
-    * Non-relative or aliased module specifiers (``import foo from "pkg/a"``)
-      where we can't infer the new module path
-    * Languages other than Python / JS / TS / TSX
+    (1) derives the new module/namespace path from ``to_file`` relative
+        to ``project_root`` (dotted path for JVM-family langs, backslash
+        path for PHP, filesystem path for ruby/lua/go/C-family, crate::
+        path for rust), and
+    (2) performs a substring replacement inside the already-identified
+        import line, swapping the old module segment for the new one.
+
+Rust's ``use`` trees add one extra case: a braced multi-import
+``use crate::foo::{Bar, Baz};`` where only ``Bar`` is being moved — we
+split into ``use crate::foo::{Baz};`` plus a fresh
+``use crate::new::Bar;``. Nested braces / wildcard imports / renamed
+items (``use foo::Bar as Renamed;``) are flagged as manual review
+rather than attempting a half-handled rewrite that could break valid
+code.
 
 Same-file moves (``from_file == to_file``) are rejected with a hint to
 use ``fast_move`` / the ``move`` CLI subcommand.
@@ -40,6 +45,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -51,13 +57,81 @@ from .ast_utils import (
     get_ast_map,
 )
 
-# Supported extensions for the import-rewrite step. Extraction / deletion
-# works for every language the AST analyzer supports (that's what
-# delete_symbol uses) — but the rewrite templates below only know Python
-# and JS-family syntax, so we gate the top-level API to those.
+# ---------------------------------------------------------------------------
+# Supported extensions and language families.
+# ---------------------------------------------------------------------------
+#
+# Each language family has:
+#   * A set of file extensions that dispatch to it.
+#   * A ``_import_specifier_for_<family>`` function that converts a
+#     ``to_file`` path into the string used in that language's import
+#     statement (dotted path / backslash path / relative fs path / etc).
+#   * A ``_rewrite_<family>_import_line`` function that takes an
+#     already-identified import line and produces the rewritten text.
+#   * A ``_looks_like_import_line_<family>`` text matcher used on
+#     non-AST-native langs where tldr emits ``kind="other"`` for every
+#     reference, including imports.
+#
+# Langs that share syntax (java/kotlin/scala — all dotted, with minor
+# trailing-punctuation differences) share a rewriter; the dispatcher
+# selects the right one per extension.
+
 _PY_EXTS = frozenset({".py"})
 _TS_EXTS = frozenset({".ts", ".tsx", ".js", ".jsx"})
-_SUPPORTED_EXTS = _PY_EXTS | _TS_EXTS
+_JAVA_EXTS = frozenset({".java"})
+_KOTLIN_EXTS = frozenset({".kt", ".kts"})
+_SCALA_EXTS = frozenset({".scala"})
+_CSHARP_EXTS = frozenset({".cs"})
+_PHP_EXTS = frozenset({".php"})
+_GO_EXTS = frozenset({".go"})
+_RUST_EXTS = frozenset({".rs"})
+_SWIFT_EXTS = frozenset({".swift"})
+_RUBY_EXTS = frozenset({".rb"})
+_ELIXIR_EXTS = frozenset({".ex", ".exs"})
+_LUA_EXTS = frozenset({".lua"})
+_C_EXTS = frozenset({".c", ".h"})
+_CPP_EXTS = frozenset({".cpp", ".cc", ".cxx", ".hpp", ".hh"})
+
+_SUPPORTED_EXTS = (
+    _PY_EXTS | _TS_EXTS | _JAVA_EXTS | _KOTLIN_EXTS | _SCALA_EXTS
+    | _CSHARP_EXTS | _PHP_EXTS | _GO_EXTS | _RUST_EXTS | _SWIFT_EXTS
+    | _RUBY_EXTS | _ELIXIR_EXTS | _LUA_EXTS | _C_EXTS | _CPP_EXTS
+)
+
+
+def _ext_family(ext: str) -> str | None:
+    """Return the rewriter-family name for a file extension, or None."""
+    if ext in _PY_EXTS:
+        return "python"
+    if ext in _TS_EXTS:
+        return "ts"
+    if ext in _JAVA_EXTS:
+        return "java"
+    if ext in _KOTLIN_EXTS:
+        return "kotlin"
+    if ext in _SCALA_EXTS:
+        return "scala"
+    if ext in _CSHARP_EXTS:
+        return "csharp"
+    if ext in _PHP_EXTS:
+        return "php"
+    if ext in _GO_EXTS:
+        return "go"
+    if ext in _RUST_EXTS:
+        return "rust"
+    if ext in _SWIFT_EXTS:
+        return "swift"
+    if ext in _RUBY_EXTS:
+        return "ruby"
+    if ext in _ELIXIR_EXTS:
+        return "elixir"
+    if ext in _LUA_EXTS:
+        return "lua"
+    if ext in _C_EXTS:
+        return "c"
+    if ext in _CPP_EXTS:
+        return "cpp"
+    return None
 
 
 @dataclass
@@ -142,18 +216,58 @@ def _extract_json_object(text: str) -> str:
     return ""
 
 
-def _run_tldr_import_refs(symbol: str, root: Path) -> list[dict]:
-    """Return ``tldr references <symbol> <root> --kinds import`` hits.
+# Per-language import-line recognizers. Used to filter tldr refs when the
+# ``--kinds import`` upstream filter doesn't fire — i.e., on non-AST-
+# native langs where every reference is ``kind="other"``. These regexes
+# only have to match the *import line text*, not the full import
+# grammar; they run against the line's stripped content.
+_IMPORT_LINE_PATTERNS: dict[str, re.Pattern] = {
+    "python": re.compile(r"^\s*(from\s+\S+\s+import\b|import\s+\S)"),
+    "ts": re.compile(r"^\s*import\b"),
+    "java": re.compile(r"^\s*import\s+[\w.]+;?\s*$"),
+    "kotlin": re.compile(r"^\s*import\s+[\w.]+(?:\s+as\s+\w+)?\s*$"),
+    "scala": re.compile(r"^\s*import\s+[\w.]+(?:\.\{[^}]+\})?\s*$"),
+    "csharp": re.compile(r"^\s*using\s+[\w.]+\s*;"),
+    "php": re.compile(r"^\s*use\s+[\w\\]+(?:\s+as\s+\w+)?\s*;"),
+    "go": re.compile(r"^\s*(?:import\s+)?\"[^\"]+\"\s*$"),
+    "rust": re.compile(r"^\s*(?:pub\s+)?use\s+[\w:{},\s\*]+;"),
+    "swift": re.compile(r"^\s*import\s+[\w.]+\s*$"),
+    "ruby": re.compile(r"^\s*(require|require_relative|load)\s+['\"][^'\"]+['\"]"),
+    "elixir": re.compile(r"^\s*(alias|import|require|use)\s+[\w.]+"),
+    "lua": re.compile(r"^\s*(?:local\s+\w+\s*=\s*)?require\s*[\(\"']"),
+    "c": re.compile(r"^\s*#include\s+[<\"][^>\"]+[>\"]"),
+    "cpp": re.compile(r"^\s*#include\s+[<\"][^>\"]+[>\"]"),
+}
 
-    Empty list on any failure (binary missing, timeout, bad JSON). We
-    fall-open so infra issues don't silently corrupt a move — the caller
-    checks ``import_rewrites`` and warns if zero hits were found.
+
+def _is_import_line_for(family: str, line: str) -> bool:
+    """Return True when ``line`` looks like an import statement in ``family``.
+
+    Used as a text-level fallback when tldr emits ``kind="other"`` for
+    every reference (non-AST-native langs). The match is intentionally
+    loose — we already know the ref points at the symbol in question,
+    so we just need to confirm we're looking at an import statement
+    and not a usage site.
+    """
+    pattern = _IMPORT_LINE_PATTERNS.get(family)
+    if pattern is None:
+        return False
+    return bool(pattern.match(line))
+
+
+def _run_tldr_references_all(symbol: str, root: Path) -> list[dict]:
+    """Return every tldr reference at workspace scope.
+
+    Skips the ``--kinds import`` filter because on non-AST-native langs
+    tldr emits ``kind="other"`` for imports too; filtering upstream
+    would drop real hits. Callers filter client-side via
+    :func:`_is_import_line_for` or by checking ``kind == "import"`` on
+    AST-native langs.
     """
     cmd = [
         "tldr", "references", symbol, str(root),
         "--format", "json",
         "--scope", "workspace",
-        "--kinds", "import",
         "--min-confidence", "0.9",
         "--limit", "10000",
     ]
@@ -173,30 +287,355 @@ def _run_tldr_import_refs(symbol: str, root: Path) -> list[dict]:
     if not isinstance(data, dict):
         return []
     refs = data.get("references") or []
-    return [r for r in refs if isinstance(r, dict) and r.get("kind") == "import"]
+    return [r for r in refs if isinstance(r, dict)]
+
+
+def _filter_refs_to_imports(
+    refs: list[dict], family: str,
+) -> list[dict]:
+    """Return only the refs whose line looks like an import in ``family``.
+
+    AST-native langs (python/ts/go/rust) get tldr's semantic ``kind``
+    checked first; falls back to text match for consistency.
+    """
+    out: list[dict] = []
+    for r in refs:
+        if r.get("kind") == "import":
+            out.append(r)
+            continue
+        # Text-level match on the ref's context line.
+        ctx = r.get("context")
+        if isinstance(ctx, str) and _is_import_line_for(family, ctx):
+            out.append(r)
+    return out
+
+
+# Languages where the import statement names the FILE, not the symbol:
+#   * Ruby:  require_relative "a"  — path string
+#   * Go:    import "./a"          — path string (when local)
+#   * Lua:   require "a"           — path string
+#   * C/C++: #include "a.h"        — header path
+#
+# tldr's ``references <symbol>`` can't find these lines because the
+# symbol name doesn't appear in them. We instead scan project files
+# for lines mentioning the source file's basename, within an import-
+# shaped line.
+_FILE_NAMED_IMPORT_FAMILIES = frozenset({"ruby", "go", "lua", "c", "cpp"})
+
+
+def _scan_file_named_imports(
+    family: str,
+    from_file: Path,
+    root: Path,
+) -> list[dict]:
+    """Scan ``root`` for import lines referencing ``from_file`` by path.
+
+    Walks every file under ``root`` matching the family's extension set
+    and returns synthetic ref dicts (``file``, ``line``, ``context``,
+    ``kind="import"``) for each import line that names the source
+    file's basename or stem.
+
+    Returns an empty list on read failures. This is intentionally
+    conservative — we only match the basename (not arbitrary path
+    substrings), so a rename of ``helpers/a.c`` to ``b.c`` won't touch
+    an unrelated ``#include "somewhere/a.c"`` in a different dir.
+    """
+    exts_by_family = {
+        "ruby": _RUBY_EXTS,
+        "go": _GO_EXTS,
+        "lua": _LUA_EXTS,
+        "c": _C_EXTS | _CPP_EXTS,   # headers often included cross-family
+        "cpp": _C_EXTS | _CPP_EXTS,
+    }
+    exts = exts_by_family.get(family)
+    if exts is None:
+        return []
+
+    stem = from_file.stem
+    basename = from_file.name
+    # Match any import line that contains the stem or basename as a
+    # quoted / bracketed substring. The per-family regex below is
+    # intentionally loose — we're already filtering by ``_is_import_
+    # line_for``, which catches the import keyword.
+    # Match quoted or bracketed path ending in the stem with optional
+    # extension. We build the regex from three pieces to avoid mixing
+    # ``"`` and ``\'`` inside a single raw string.
+    _open = '[\"\'<]'
+    _close = '[\"\'>]'
+    _prefix = '(?:[^\"\'<>]*/)?'
+    needle_re = re.compile(
+        _open + _prefix + re.escape(stem) + r"(?:\.[A-Za-z0-9]+)?" + _close
+    )
+
+    out: list[dict] = []
+    try:
+        from_resolved = from_file.resolve()
+    except OSError:
+        from_resolved = from_file
+
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix not in exts:
+            continue
+        try:
+            if path.resolve() == from_resolved:
+                continue
+        except OSError:
+            pass
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for i, line in enumerate(content.splitlines(), start=1):
+            stripped = line.strip()
+            if not _is_import_line_for(family, stripped):
+                continue
+            if not needle_re.search(line):
+                continue
+            out.append({
+                "file": str(path),
+                "line": i,
+                "context": line,
+                "kind": "import",
+            })
+    return out
 
 
 # ---------------------------------------------------------------------------
-# Module-path conversion
+# Module-path conversion — per language.
 # ---------------------------------------------------------------------------
 
 
-def _python_module_for(file_path: Path, project_root: Path) -> str:
-    """Convert ``<root>/pkg/sub/mod.py`` -> ``pkg.sub.mod``.
+def _dotted_module_for(file_path: Path, project_root: Path) -> str:
+    """Return ``pkg.sub.mod`` for ``<root>/pkg/sub/mod.ext``.
 
-    When ``file_path`` is outside ``project_root`` we return the stem —
-    which yields a best-effort rewrite that won't be worse than leaving
-    the import alone.
+    Common helper for python/java/kotlin/scala/c#. The caller may want
+    to drop the module *or* retain it depending on the language's
+    convention; callers handle trailing semantics.
     """
     try:
         rel = file_path.resolve().relative_to(project_root.resolve())
     except ValueError:
         return file_path.stem
     parts = list(rel.with_suffix("").parts)
-    # Drop trailing __init__: `pkg/__init__.py` imports as `pkg`.
+    # Drop trailing ``__init__`` for Python packages.
     if parts and parts[-1] == "__init__":
         parts = parts[:-1]
     return ".".join(parts) if parts else file_path.stem
+
+
+def _python_module_for(file_path: Path, project_root: Path) -> str:
+    """Python dotted module path. See :func:`_dotted_module_for`."""
+    return _dotted_module_for(file_path, project_root)
+
+
+def _java_module_for(file_path: Path, project_root: Path) -> str:
+    """Java ``pkg.sub.Class`` path.
+
+    Java imports point at a specific class, so the path is the package
+    (directories) plus the class name (file stem). The file stem is
+    preserved case-sensitively — Java conventions capitalize public
+    class names, which must match the file name.
+    """
+    try:
+        rel = file_path.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return file_path.stem
+    parts = list(rel.with_suffix("").parts)
+    return ".".join(parts) if parts else file_path.stem
+
+
+def _kotlin_module_for(file_path: Path, project_root: Path) -> str:
+    """Kotlin ``pkg.sub.Symbol`` — same dotted form as Java, but Kotlin
+    imports name the symbol (not the file), so we return the package
+    path plus a trailing ``.<symbol>`` appended at the call site.
+
+    This helper returns just the package prefix; the caller appends
+    ``.<symbol>`` so the same helper works for moving a
+    top-level-in-package function (dotted path = pkg + symbol) or a
+    class (pkg + class-name).
+    """
+    try:
+        rel = file_path.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return ""
+    # Kotlin imports use the directory path as the package, not the
+    # file stem. Files can declare any package via ``package ...``
+    # header; we default to the directory path which is the most
+    # common convention.
+    parts = list(rel.parent.parts)
+    return ".".join(parts)
+
+
+def _scala_module_for(file_path: Path, project_root: Path) -> str:
+    """Scala ``pkg.sub`` — same as Kotlin: package path only, caller
+    appends the symbol.
+    """
+    return _kotlin_module_for(file_path, project_root)
+
+
+def _csharp_namespace_for(file_path: Path, project_root: Path) -> str:
+    """C# ``Namespace.Sub`` — directory-path in PascalCase.
+
+    Real C# projects derive namespaces from .csproj settings; we can't
+    see those, so we use the directory path as-is. Callers can always
+    edit the derived path after the rewrite — this is a best-effort
+    scaffold.
+    """
+    try:
+        rel = file_path.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return ""
+    parts = list(rel.parent.parts)
+    return ".".join(parts)
+
+
+def _php_namespace_for(file_path: Path, project_root: Path) -> str:
+    """PHP ``Foo\\Bar`` — backslash-separated namespace path.
+
+    PSR-4 autoloading maps ``Foo\\Bar\\Baz`` to ``Foo/Bar/Baz.php``, so
+    we use the directory path with backslash separators. The class
+    name (file stem) is appended by the caller.
+    """
+    try:
+        rel = file_path.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return ""
+    parts = list(rel.parent.parts)
+    return "\\".join(parts)
+
+
+def _go_import_path_for(file_path: Path, project_root: Path) -> str:
+    """Go ``module/path/subdir`` — POSIX-path of the containing directory.
+
+    Real Go modules have an import prefix declared in go.mod. We can't
+    see that, so we return the directory path relative to project root
+    (a common case for local-only modules and the substring the user
+    needs to replace in their existing import string).
+    """
+    try:
+        rel = file_path.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return file_path.parent.name
+    parts = list(rel.parent.parts)
+    return "/".join(parts) if parts else "."
+
+
+def _rust_use_path_for(file_path: Path, project_root: Path) -> str:
+    """Rust ``crate::pkg::sub`` — module path for a ``use`` statement.
+
+    Rust modules nest via ``pub mod foo;`` declarations and
+    ``foo/mod.rs`` files. The reliable approximation is a path-based
+    one: the directory portion relative to ``src/`` becomes
+    ``crate::<parts>`` and the file stem becomes the module name.
+    """
+    try:
+        rel = file_path.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return "crate::" + file_path.stem
+    parts = list(rel.with_suffix("").parts)
+    # Drop a leading ``src`` directory — by convention that's the crate
+    # root, not part of the module path.
+    if parts and parts[0] == "src":
+        parts = parts[1:]
+    # ``mod.rs`` files don't contribute a segment of their own.
+    if parts and parts[-1] == "mod":
+        parts = parts[:-1]
+    return "crate::" + "::".join(parts) if parts else "crate"
+
+
+def _swift_module_for(file_path: Path, project_root: Path) -> str:
+    """Swift ``import Foo`` — just the top-level module name.
+
+    Swift modules map 1:1 to build targets, not filesystem paths. Best
+    approximation: the top-level directory under ``project_root``.
+    """
+    try:
+        rel = file_path.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return file_path.parent.name
+    parts = list(rel.parent.parts)
+    return parts[0] if parts else file_path.stem
+
+
+def _ruby_require_path_for(
+    from_file: Path, to_file: Path, project_root: Path,
+) -> str:
+    """Ruby ``require_relative`` path — relative path, no extension.
+
+    Ruby's ``require`` uses $LOAD_PATH; ``require_relative`` uses a path
+    relative to the importing file. We generate the require_relative
+    form because it's deterministic from filesystem layout.
+    """
+    try:
+        rel = os.path.relpath(
+            str(to_file.resolve().with_suffix("")),
+            start=str(from_file.resolve().parent),
+        )
+    except (ValueError, OSError):
+        return to_file.stem
+    return rel.replace(os.sep, "/")
+
+
+def _elixir_module_for(file_path: Path, project_root: Path) -> str:
+    """Elixir ``Foo.Bar`` — PascalCase directory path.
+
+    Convention: ``lib/foo/bar.ex`` defines ``Foo.Bar``. We convert
+    directory segments to PascalCase.
+    """
+    try:
+        rel = file_path.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return file_path.stem.capitalize()
+    parts = list(rel.with_suffix("").parts)
+    # Drop leading ``lib`` directory by convention.
+    if parts and parts[0] == "lib":
+        parts = parts[1:]
+
+    def _pascal(seg: str) -> str:
+        return "".join(part.capitalize() for part in seg.split("_"))
+
+    return ".".join(_pascal(p) for p in parts) or file_path.stem.capitalize()
+
+
+def _lua_require_path_for(
+    from_file: Path, to_file: Path, project_root: Path,
+) -> str:
+    """Lua ``require "foo.bar"`` path — dotted or slashed form.
+
+    Lua's ``require`` uses package paths resolved via ``package.path``.
+    We return the project-root-relative path with dots so it matches
+    the default ``?.lua`` resolution.
+    """
+    try:
+        rel = to_file.resolve().relative_to(project_root.resolve())
+    except ValueError:
+        return to_file.stem
+    parts = list(rel.with_suffix("").parts)
+    return ".".join(parts) if parts else to_file.stem
+
+
+def _c_include_path_for(
+    from_file: Path, to_file: Path, project_root: Path,
+) -> str:
+    """C/C++ ``#include "path.h"`` path — relative to the caller.
+
+    ``#include <...>`` uses system search paths we can't see. Local
+    project includes use ``"..."`` with paths relative to the caller
+    (or to a standard include dir). Moving a function normally moves
+    its declaration across .h files — which we can't infer with just
+    the .c/.cpp source. We return a caller-relative path for the
+    target file and let the caller decide whether to apply or flag.
+    """
+    try:
+        rel = os.path.relpath(
+            str(to_file.resolve()),
+            start=str(from_file.resolve().parent),
+        )
+    except (ValueError, OSError):
+        return to_file.name
+    return rel.replace(os.sep, "/")
 
 
 def _ts_relative_path(from_file: Path, to_file: Path) -> str:
@@ -377,6 +816,540 @@ def _rewrite_ts_import_line(
     return residual + new_symbol_line, True, ""
 
 
+def _rewrite_dotted_import_line(
+    line: str,
+    symbol: str,
+    new_module: str,
+    *,
+    keyword: str,
+    trailing_semi: bool,
+    path_sep: str = ".",
+) -> tuple[str | None, bool, str]:
+    """Rewrite a Java/Kotlin/Scala/C#-style ``<keyword> pkg.sub.Sym;`` line.
+
+    Java / Kotlin / Scala / C# all share the same basic shape:
+
+        import pkg.sub.Symbol[;]        # java/kotlin/scala
+        using Pkg.Sub.Symbol;           # c#
+
+    The import points at the symbol directly (Java inner classes use
+    ``pkg.sub.Outer.Inner`` — still a dotted path ending in Symbol).
+    We match the trailing ``.<symbol>`` segment (or ``.<Symbol>`` with
+    the exact case tldr gave us), swap the prefix for ``new_module``,
+    and keep the trailing semicolon if the lang requires one.
+
+    PHP's ``use Foo\\Bar\\Sym;`` reuses this function with
+    ``path_sep='\\'``.
+    """
+    stripped = line.rstrip("\n")
+    newline = line[len(stripped):] or "\n"
+
+    s = stripped.strip()
+    # Indent preserved for nested imports (rare but legal in some langs).
+    indent_len = len(stripped) - len(stripped.lstrip())
+    indent = stripped[:indent_len]
+
+    # Strip trailing semicolon for uniform matching; re-add per lang.
+    had_semi = s.endswith(";")
+    if had_semi:
+        s = s[:-1].rstrip()
+
+    if not s.startswith(keyword + " "):
+        return None, False, f"not a {keyword} statement"
+
+    path = s[len(keyword) + 1:].strip()
+
+    # Wildcards: java `import pkg.*;`, c# `using X.*;` — moving a single
+    # symbol doesn't require rewriting a wildcard because the whole
+    # package is already in scope. Flag for manual review since the
+    # semantics are: after the move, the symbol lives elsewhere and the
+    # wildcard won't cover it.
+    if path.endswith(path_sep + "*") or path.endswith(".*"):
+        return None, False, "wildcard import"
+
+    # Split on the path separator to find the symbol suffix.
+    if path_sep == "\\":
+        segments = path.split(path_sep)
+    else:
+        segments = path.split(path_sep)
+    if not segments:
+        return None, False, "empty import path"
+
+    last = segments[-1]
+    # Some langs allow ``import pkg.sub.{A, B}`` (scala). Flag and let
+    # the user handle.
+    if "{" in path or "}" in path:
+        return None, False, "braced multi-import (manual review)"
+
+    if last != symbol:
+        return None, False, f"last segment {last!r} != symbol {symbol!r}"
+
+    # Swap: new_module already includes the full prefix up to the
+    # symbol for JVM-family, and up to the namespace for PHP. We append
+    # the symbol with the right path separator.
+    if path_sep == "\\":
+        new_path = new_module + "\\" + symbol
+    else:
+        new_path = new_module + "." + symbol
+    rebuilt = f"{indent}{keyword} {new_path}"
+    if had_semi or trailing_semi:
+        rebuilt += ";"
+    return rebuilt + newline, False, ""
+
+
+def _rewrite_java_import_line(
+    line: str, symbol: str, new_module: str,
+) -> tuple[str | None, bool, str]:
+    """Java: ``import pkg.sub.Symbol;``."""
+    return _rewrite_dotted_import_line(
+        line, symbol, new_module, keyword="import", trailing_semi=True,
+    )
+
+
+def _rewrite_kotlin_import_line(
+    line: str, symbol: str, new_module: str,
+) -> tuple[str | None, bool, str]:
+    """Kotlin: ``import pkg.sub.Symbol`` (no semicolon)."""
+    return _rewrite_dotted_import_line(
+        line, symbol, new_module, keyword="import", trailing_semi=False,
+    )
+
+
+def _rewrite_scala_import_line(
+    line: str, symbol: str, new_module: str,
+) -> tuple[str | None, bool, str]:
+    """Scala: ``import pkg.sub.Symbol`` (no semicolon, Scala 3 / 2 both)."""
+    return _rewrite_dotted_import_line(
+        line, symbol, new_module, keyword="import", trailing_semi=False,
+    )
+
+
+def _rewrite_csharp_import_line(
+    line: str, symbol: str, new_module: str,
+) -> tuple[str | None, bool, str]:
+    """C#: ``using Pkg.Sub.Cls;``."""
+    return _rewrite_dotted_import_line(
+        line, symbol, new_module, keyword="using", trailing_semi=True,
+    )
+
+
+def _rewrite_php_import_line(
+    line: str, symbol: str, new_module: str,
+) -> tuple[str | None, bool, str]:
+    """PHP: ``use Foo\\Bar\\Symbol;``."""
+    return _rewrite_dotted_import_line(
+        line, symbol, new_module, keyword="use", trailing_semi=True,
+        path_sep="\\",
+    )
+
+
+def _rewrite_go_import_line(
+    line: str, symbol: str, new_specifier: str,
+) -> tuple[str | None, bool, str]:
+    """Go: ``import "module/path"`` (the symbol isn't named in the
+    import — Go imports are package-path-only).
+
+    Go imports don't carry symbol names — the symbol is accessed via
+    ``<pkg>.<Symbol>`` at the call site. Moving ``Foo`` from
+    ``pkg/a`` to ``pkg/b`` means callers' import lines must be
+    switched from ``"pkg/a"`` to ``"pkg/b"``. We do a substring swap
+    inside the quoted path.
+
+    ``new_specifier`` is the new package path (no quotes).
+    """
+    stripped = line.rstrip("\n")
+    newline = line[len(stripped):] or "\n"
+
+    s = stripped.strip()
+    # Normalize: ``import "path"`` and bare ``"path"`` inside a grouped
+    # import block both end up here; tldr flags either shape.
+    if s.startswith("import "):
+        prefix = s[:7]
+        rest = s[7:].strip()
+    else:
+        prefix = ""
+        rest = s
+    if not (rest.startswith('"') and rest.endswith('"')):
+        return None, False, "not a quoted import specifier"
+    indent_len = len(stripped) - len(stripped.lstrip())
+    indent = stripped[:indent_len]
+    rebuilt = f"{indent}{prefix}\"{new_specifier}\"{newline}"
+    return rebuilt, False, ""
+
+
+def _rewrite_rust_import_line(
+    line: str, symbol: str, new_use_path: str,
+) -> tuple[str | None, bool, str]:
+    """Rust: ``use crate::pkg::sub::Symbol;`` with optional braced group.
+
+    Cases handled:
+
+    * Simple: ``use crate::foo::Bar;`` → swap path, keep trailing
+      ``::Bar;``. Same mechanism as the JVM-family helper, but using
+      ``::`` as the path separator.
+    * Braced group: ``use crate::foo::{Bar, Baz};`` when moving ``Bar``
+      only — split into ``use crate::foo::{Baz};`` plus a fresh
+      ``use <new_use_path>::Bar;``.
+    * Braced single: ``use crate::foo::{Bar};`` moving Bar — collapse to
+      ``use <new_use_path>::Bar;``.
+
+    Flagged for manual review:
+
+    * Nested braces: ``use foo::{bar::Baz, qux::{One, Two}};``
+    * Wildcard: ``use foo::*;``
+    * Renamed: ``use foo::Bar as Renamed;``
+
+    ``new_use_path`` is the path prefix up to (but not including) the
+    symbol — e.g. ``crate::new_module`` — with no trailing ``::``.
+    """
+    stripped = line.rstrip("\n")
+    newline = line[len(stripped):] or "\n"
+    s = stripped.strip()
+    indent_len = len(stripped) - len(stripped.lstrip())
+    indent = stripped[:indent_len]
+
+    had_semi = s.endswith(";")
+    if had_semi:
+        s = s[:-1].rstrip()
+
+    # Strip ``pub `` visibility qualifier — the rewrite preserves it.
+    pub_prefix = ""
+    if s.startswith("pub "):
+        pub_prefix = "pub "
+        s = s[4:]
+    if not s.startswith("use "):
+        return None, False, "not a use statement"
+    path = s[4:].strip()
+
+    # Wildcard: not automatable.
+    if path.endswith("::*") or path == "*":
+        return None, False, "wildcard use (manual review)"
+    # Aliased rename: ``use foo::Bar as Renamed``.
+    if " as " in path:
+        return None, False, "renamed use (manual review)"
+
+    # Braced groups. Count depth to reject nested.
+    if "{" in path:
+        if path.count("{") > 1:
+            return None, False, "nested use tree (manual review)"
+        brace_start = path.index("{")
+        if not path.endswith("}"):
+            return None, False, "malformed use-tree"
+        prefix = path[:brace_start].rstrip(":")
+        inner = path[brace_start + 1 : -1]
+        names = [n.strip() for n in inner.split(",") if n.strip()]
+        # Any nested items in the list (contain ``::`` or ``{``) → flag.
+        if any("::" in n or "{" in n or " as " in n for n in names):
+            return None, False, "nested or renamed use-tree (manual review)"
+        if symbol not in names:
+            return None, False, "symbol not in use-tree"
+        remaining = [n for n in names if n != symbol]
+        new_symbol_line = (
+            f"{indent}{pub_prefix}use {new_use_path}::{symbol}"
+            f"{';' if had_semi else ''}{newline}"
+        )
+        if not remaining:
+            # Group collapsed — emit only the new line.
+            return new_symbol_line, False, ""
+        if len(remaining) == 1:
+            # ``use prefix::<one>;`` — drop the braces.
+            residual = (
+                f"{indent}{pub_prefix}use {prefix}::{remaining[0]}"
+                f"{';' if had_semi else ''}{newline}"
+            )
+        else:
+            joined = ", ".join(remaining)
+            residual = (
+                f"{indent}{pub_prefix}use {prefix}::{{{joined}}}"
+                f"{';' if had_semi else ''}{newline}"
+            )
+        return residual + new_symbol_line, True, ""
+
+    # Simple ``use foo::bar::Symbol;``
+    segments = path.split("::")
+    if not segments or segments[-1] != symbol:
+        return None, False, f"last segment {segments[-1]!r} != symbol"
+    rebuilt = (
+        f"{indent}{pub_prefix}use {new_use_path}::{symbol}"
+        f"{';' if had_semi else ''}{newline}"
+    )
+    return rebuilt, False, ""
+
+
+def _rewrite_swift_import_line(
+    line: str, symbol: str, new_module: str,
+) -> tuple[str | None, bool, str]:
+    """Swift: ``import Foo`` (module name only).
+
+    Swift imports name modules, not symbols. Moving a symbol between
+    files in the same module requires no import rewrite; moving
+    between modules requires swapping the module name.
+    """
+    stripped = line.rstrip("\n")
+    newline = line[len(stripped):] or "\n"
+    s = stripped.strip()
+    indent_len = len(stripped) - len(stripped.lstrip())
+    indent = stripped[:indent_len]
+
+    if not s.startswith("import "):
+        return None, False, "not a Swift import"
+    current = s[7:].strip()
+    # Skip submodule imports like ``import Foo.Bar`` — we'd need to
+    # know whether the user wants the whole module or a submodule.
+    if "." in current:
+        return None, False, "submodule import (manual review)"
+    if current == new_module:
+        # No-op: destination in same module.
+        return stripped + newline, False, ""
+    rebuilt = f"{indent}import {new_module}{newline}"
+    return rebuilt, False, ""
+
+
+def _rewrite_ruby_import_line(
+    line: str, symbol: str, new_require_path: str,
+) -> tuple[str | None, bool, str]:
+    """Ruby: ``require_relative "foo/bar"`` or ``require "foo/bar"``.
+
+    Ruby imports name the FILE, not the symbol. We do a path-string
+    substring swap inside the existing quotes.
+    """
+    stripped = line.rstrip("\n")
+    newline = line[len(stripped):] or "\n"
+    s = stripped.strip()
+    indent_len = len(stripped) - len(stripped.lstrip())
+    indent = stripped[:indent_len]
+
+    m = re.match(
+        r"^(require|require_relative|load)\s+(['\"])([^'\"]+)(['\"])\s*$",
+        s,
+    )
+    if not m:
+        return None, False, "unparsable require"
+    keyword = m.group(1)
+    quote = m.group(2)
+    rebuilt = (
+        f"{indent}{keyword} {quote}{new_require_path}{quote}{newline}"
+    )
+    return rebuilt, False, ""
+
+
+def _rewrite_elixir_import_line(
+    line: str, symbol: str, new_module: str,
+) -> tuple[str | None, bool, str]:
+    """Elixir: ``alias Foo.Bar`` or ``import Foo.Bar`` / ``use ...``.
+
+    Handles ``alias`` and ``import`` with a single dotted-module
+    reference. Braced aliases (``alias Foo.{Bar, Baz}``) are flagged
+    for manual review — the same nested-group caveat as Rust applies.
+    """
+    stripped = line.rstrip("\n")
+    newline = line[len(stripped):] or "\n"
+    s = stripped.strip()
+    indent_len = len(stripped) - len(stripped.lstrip())
+    indent = stripped[:indent_len]
+
+    m = re.match(
+        r"^(alias|import|require|use)\s+([\w.]+(?:\.\{[^}]+\})?)"
+        r"(?:\s*,\s*as:\s*(\w+))?\s*$",
+        s,
+    )
+    if not m:
+        return None, False, "unparsable elixir alias/import"
+    keyword = m.group(1)
+    path = m.group(2)
+    as_clause = m.group(3)
+
+    if "{" in path:
+        return None, False, "braced alias group (manual review)"
+
+    segments = path.split(".")
+    if not segments or segments[-1] != symbol:
+        return None, False, (
+            f"last segment {segments[-1]!r} != symbol {symbol!r}"
+        )
+
+    new_path = f"{new_module}.{symbol}" if new_module else symbol
+    rebuilt = f"{indent}{keyword} {new_path}"
+    if as_clause:
+        rebuilt += f", as: {as_clause}"
+    return rebuilt + newline, False, ""
+
+
+def _rewrite_lua_import_line(
+    line: str, symbol: str, new_require_path: str,
+) -> tuple[str | None, bool, str]:
+    """Lua: ``require "foo.bar"`` or ``require("foo.bar")`` or
+    ``local m = require "foo.bar"``.
+
+    Like Ruby, Lua imports name modules/files, not symbols. Swap the
+    quoted path string.
+    """
+    stripped = line.rstrip("\n")
+    newline = line[len(stripped):] or "\n"
+    s = stripped.strip()
+    indent_len = len(stripped) - len(stripped.lstrip())
+    indent = stripped[:indent_len]
+
+    # Match ``require "x"``, ``require('x')``, ``local v = require "x"``.
+    m = re.match(
+        r"^(local\s+\w+\s*=\s*)?require\s*[\(\s]\s*(['\"])([^'\"]+)\2\s*\)?"
+        r"\s*$",
+        s,
+    )
+    if not m:
+        return None, False, "unparsable lua require"
+    prefix = m.group(1) or ""
+    quote = m.group(2)
+    # Rebuild with either call-style or bare-string-style based on the
+    # original form. We check for a '(' after ``require`` to decide.
+    uses_parens = "(" in s.split("require", 1)[1]
+    if uses_parens:
+        rebuilt = (
+            f"{indent}{prefix}require({quote}{new_require_path}{quote})"
+            f"{newline}"
+        )
+    else:
+        rebuilt = (
+            f"{indent}{prefix}require {quote}{new_require_path}{quote}"
+            f"{newline}"
+        )
+    return rebuilt, False, ""
+
+
+def _rewrite_c_import_line(
+    line: str, symbol: str, new_header_path: str,
+) -> tuple[str | None, bool, str]:
+    """C/C++: ``#include "foo.h"`` or ``#include <foo.h>``.
+
+    We only rewrite the ``"..."`` form (project-local includes).
+    ``<...>`` is left for manual review — it implies a system or
+    compiler-searched include whose path can't be inferred from
+    filesystem layout alone.
+    """
+    stripped = line.rstrip("\n")
+    newline = line[len(stripped):] or "\n"
+    s = stripped.strip()
+    indent_len = len(stripped) - len(stripped.lstrip())
+    indent = stripped[:indent_len]
+
+    m = re.match(r'^#include\s+"([^"]+)"\s*$', s)
+    if m:
+        rebuilt = f"{indent}#include \"{new_header_path}\"{newline}"
+        return rebuilt, False, ""
+    m = re.match(r"^#include\s+<[^>]+>\s*$", s)
+    if m:
+        return None, False, "system include (manual review)"
+    return None, False, "unparsable include"
+
+
+# ---------------------------------------------------------------------------
+# Family dispatch — import specifier + rewriter.
+# ---------------------------------------------------------------------------
+
+
+def _compute_import_specifier(
+    family: str,
+    symbol: str,
+    from_file: Path,
+    to_file: Path,
+    caller_file: Path,
+    project_root: Path,
+) -> str:
+    """Compute the new module/namespace/path string for a rewrite.
+
+    The returned value is what the family's rewriter expects as its
+    ``new_module`` / ``new_specifier`` argument — NOT the full new
+    import line. Each family has different conventions:
+
+    * python: dotted module path (caller appends ``.<symbol>`` via
+      ``from <this> import <symbol>``)
+    * ts/js: relative path from caller to target, no extension
+    * java/scala: ``pkg.sub`` (caller appends ``.<symbol>``)
+    * kotlin: ``pkg.sub`` (caller appends ``.<symbol>``)
+    * csharp: ``Pkg.Sub`` (caller appends ``.<symbol>``)
+    * php: ``Foo\\Bar`` (caller appends ``\\<symbol>``)
+    * go: package path in quotes (no symbol)
+    * rust: ``crate::pkg::sub`` (caller appends ``::<symbol>``)
+    * swift: module name only
+    * ruby: relative require path, no quotes, no extension
+    * elixir: ``Foo.Bar`` (caller appends ``.<symbol>``)
+    * lua: dotted require path
+    * c/cpp: caller-relative header path
+    """
+    if family == "python":
+        return _python_module_for(to_file, project_root)
+    if family == "ts":
+        return _ts_relative_path(caller_file, to_file)
+    if family == "java":
+        # Java imports name the class; ``pkg.sub`` + class stem.
+        try:
+            rel = to_file.resolve().relative_to(project_root.resolve())
+            parts = list(rel.parent.parts)
+        except ValueError:
+            parts = []
+        return ".".join(parts)
+    if family == "kotlin":
+        return _kotlin_module_for(to_file, project_root)
+    if family == "scala":
+        return _scala_module_for(to_file, project_root)
+    if family == "csharp":
+        return _csharp_namespace_for(to_file, project_root)
+    if family == "php":
+        return _php_namespace_for(to_file, project_root)
+    if family == "go":
+        return _go_import_path_for(to_file, project_root)
+    if family == "rust":
+        return _rust_use_path_for(to_file, project_root)
+    if family == "swift":
+        return _swift_module_for(to_file, project_root)
+    if family == "ruby":
+        return _ruby_require_path_for(caller_file, to_file, project_root)
+    if family == "elixir":
+        return _elixir_module_for(to_file, project_root)
+    if family == "lua":
+        return _lua_require_path_for(caller_file, to_file, project_root)
+    if family in {"c", "cpp"}:
+        return _c_include_path_for(caller_file, to_file, project_root)
+    return ""
+
+
+def _rewrite_line_for_family(
+    family: str, line: str, symbol: str, specifier: str,
+) -> tuple[str | None, bool, str]:
+    """Dispatch to the family's import-rewriter. See the individual
+    ``_rewrite_<family>_import_line`` docstrings for semantics.
+    """
+    if family == "python":
+        return _rewrite_python_import_line(line, symbol, specifier)
+    if family == "ts":
+        return _rewrite_ts_import_line(line, symbol, specifier)
+    if family == "java":
+        return _rewrite_java_import_line(line, symbol, specifier)
+    if family == "kotlin":
+        return _rewrite_kotlin_import_line(line, symbol, specifier)
+    if family == "scala":
+        return _rewrite_scala_import_line(line, symbol, specifier)
+    if family == "csharp":
+        return _rewrite_csharp_import_line(line, symbol, specifier)
+    if family == "php":
+        return _rewrite_php_import_line(line, symbol, specifier)
+    if family == "go":
+        return _rewrite_go_import_line(line, symbol, specifier)
+    if family == "rust":
+        return _rewrite_rust_import_line(line, symbol, specifier)
+    if family == "swift":
+        return _rewrite_swift_import_line(line, symbol, specifier)
+    if family == "ruby":
+        return _rewrite_ruby_import_line(line, symbol, specifier)
+    if family == "elixir":
+        return _rewrite_elixir_import_line(line, symbol, specifier)
+    if family == "lua":
+        return _rewrite_lua_import_line(line, symbol, specifier)
+    if family in {"c", "cpp"}:
+        return _rewrite_c_import_line(line, symbol, specifier)
+    return None, False, f"no rewriter for {family}"
+
+
 # ---------------------------------------------------------------------------
 # Source-span extraction + destination insertion.
 # ---------------------------------------------------------------------------
@@ -534,11 +1507,14 @@ def move_to_file(
         )
 
     # Cross-family moves (e.g. .py -> .ts) are nonsense.
-    if (from_ext in _PY_EXTS) != (to_ext in _PY_EXTS):
+    from_family = _ext_family(from_ext)
+    to_family = _ext_family(to_ext)
+    if from_family != to_family:
         raise ValueError(
             "Cross-language move not supported: "
             f"{from_ext} -> {to_ext}"
         )
+    family = from_family or ""
 
     language = detect_language(from_path)
 
@@ -562,18 +1538,34 @@ def move_to_file(
     )
 
     # --- Plan import rewrites -------------------------------------------
-    is_python = from_ext in _PY_EXTS
-    if is_python:
-        new_module = _python_module_for(to_path, root)
-    else:
-        new_module = None  # per-importer: computed relative to caller
+    # Query tldr for every reference (not just imports — on non-native
+    # langs tldr emits kind="other" for imports too), then filter to
+    # import-shaped lines with the per-family text matcher.
+    raw_refs = _run_tldr_references_all(symbol, root)
+    import_refs = _filter_refs_to_imports(raw_refs, family)
 
-    refs = _run_tldr_import_refs(symbol, root)
+    # For langs where imports name the FILE (not the symbol) — ruby,
+    # go, lua, c/cpp — tldr won't find the import line via the symbol
+    # name. Scan consumer files directly for import-shaped lines that
+    # mention the source file's basename.
+    if family in _FILE_NAMED_IMPORT_FAMILIES:
+        file_named = _scan_file_named_imports(family, from_path, root)
+        # Dedupe against any hits tldr already produced.
+        seen: set[tuple[str, int]] = {
+            (r.get("file"), r.get("line"))
+            for r in import_refs
+        }
+        for r in file_named:
+            key = (r.get("file"), r.get("line"))
+            if key in seen:
+                continue
+            seen.add(key)
+            import_refs.append(r)
 
     # Group refs by file so we apply once per file (multi-name import
     # rewrites generate multiple output lines from a single input line).
     refs_by_file: dict[str, list[dict]] = {}
-    for ref in refs:
+    for ref in import_refs:
         f = ref.get("file")
         if not f:
             continue
@@ -585,7 +1577,7 @@ def move_to_file(
             continue
         # Drop refs in the destination file — tldr may have seen the
         # old import there too; after the move they'd be self-imports
-        # which Python/TS don't want.
+        # which langs don't want.
         try:
             if Path(f).resolve() == to_path.resolve():
                 continue
@@ -620,11 +1612,17 @@ def move_to_file(
             seen_lines.add(ln)
             lines_to_rewrite.append(ln)
 
-        # Per-file new_specifier for TS/JS: relative to THIS caller.
-        if is_python:
-            specifier = new_module
-        else:
-            specifier = _ts_relative_path(caller_path, to_path)
+        # Per-file import specifier: some langs derive from caller (ts
+        # relative, ruby require_relative, c/cpp include), others from
+        # the destination alone (python dotted, java/kotlin, rust).
+        specifier = _compute_import_specifier(
+            family=family,
+            symbol=symbol,
+            from_file=from_path,
+            to_file=to_path,
+            caller_file=caller_path,
+            project_root=root,
+        )
 
         # Apply rewrites bottom-up to keep earlier line indices valid.
         new_content_lines = list(content_lines)
@@ -632,14 +1630,9 @@ def move_to_file(
         file_rewrites: list[ImportRewrite] = []
         for ln in lines_to_rewrite:
             old_line = new_content_lines[ln - 1]
-            if is_python:
-                new_text, split, reason = _rewrite_python_import_line(
-                    old_line, symbol, specifier,
-                )
-            else:
-                new_text, split, reason = _rewrite_ts_import_line(
-                    old_line, symbol, specifier,
-                )
+            new_text, split, reason = _rewrite_line_for_family(
+                family, old_line, symbol, specifier,
+            )
             if new_text is None:
                 file_rewrites.append(
                     ImportRewrite(
