@@ -17,7 +17,7 @@ Milestone 4.6 Goal 3: 8-12 hand-picked adversarial cases covering:
 
 Each test documents the expected behavior AND, when the test reveals
 a real bug, encodes it via ``xfail`` with a reason pointing at the
-disposition (fix-in-scope vs 0.6.1 followup). Do NOT silently weaken
+disposition (fix-in-scope vs 0.5.1 followup). Do NOT silently weaken
 assertions.
 """
 
@@ -318,7 +318,7 @@ def test_adv_mixed_line_endings(tmp_path: Path):
 
 @pytest.mark.xfail(
     reason=(
-        "Known limitation for 0.6.1: when a file has a UTF-8 BOM, tldr "
+        "Known limitation for 0.5.1: when a file has a UTF-8 BOM, tldr "
         "reports column positions offset by the BOM length (it parses "
         "the content without the BOM, but the file on disk includes it). "
         "The byte-vs-column math in _apply_refs_to_content then misaligns "

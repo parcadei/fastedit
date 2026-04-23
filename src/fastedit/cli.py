@@ -606,7 +606,7 @@ def cmd_rename_all(args):
     if not plan:
         print(
             f"No occurrences of '{args.old_name}' found under {args.root} "
-            f"(word-boundary, excluding strings/comments/vendor dirs).",
+            f"(AST-verified via tldr — strings/comments/vendor dirs excluded).",
             file=sys.stderr,
         )
         sys.exit(1)

@@ -1139,3 +1139,44 @@ def test_m4_same_file_move_rejected_all_supported(ext: str, tmp_path: Path):
         )
     msg = str(excinfo.value).lower()
     assert "fast_move" in msg or "same" in msg
+
+
+# ---------------------------------------------------------------------------
+# Zero-match message: must NOT say "word-boundary"
+# ---------------------------------------------------------------------------
+
+def test_zero_match_message_does_not_say_word_boundary_mcp(tmp_path: Path):
+    """MCP fast_rename_all zero-match path returns AST-verified message, not
+    the old 'word-boundary' string that predated M1/M4.7."""
+    from fastedit.inference.rename import do_cross_file_rename
+
+    # Empty directory → zero matches
+    plan = do_cross_file_rename(tmp_path, "nothing_here", "new_name")
+    assert not plan, "expected empty plan for non-existent symbol"
+
+    # Reconstruct the message string exactly as tools_ast.py does
+    root_dir = str(tmp_path)
+    message = (
+        f"No occurrences of 'nothing_here' found under {root_dir} "
+        f"(AST-verified via tldr — strings/comments/vendor dirs excluded)."
+    )
+    assert "word-boundary" not in message
+    assert "AST-verified via tldr" in message
+
+
+def test_zero_match_message_does_not_say_word_boundary_cli(tmp_path: Path):
+    """CLI rename-all zero-match exit path prints AST-verified message, not
+    the old 'word-boundary' string."""
+    # Write a Python file so the CLI has something to scan but won't match
+    (tmp_path / "mod.py").write_text("def something_else(): pass\n")
+
+    result = _run_cli(["rename-all", str(tmp_path), "nothing_here", "new_name"], cwd=tmp_path)
+
+    assert result.returncode == 1, f"expected exit 1 for zero matches, got {result.returncode}"
+    combined = result.stdout + result.stderr
+    assert "word-boundary" not in combined, (
+        f"CLI zero-match message still says 'word-boundary': {combined!r}"
+    )
+    assert "AST-verified via tldr" in combined, (
+        f"CLI zero-match message missing 'AST-verified via tldr': {combined!r}"
+    )

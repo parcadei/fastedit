@@ -5,7 +5,7 @@ description: Install + configure FastEdit — AST-scoped code edits via 1.7B mod
 
 # FastEdit Setup
 
-FastEdit 0.6.0+ adds cross-file caller-safety on deletes, AST-verified renames, signature-impact notes on edits, and a cross-file `fast_move_to_file` that rewrites importers.
+FastEdit 0.5.0+ adds cross-file caller-safety on deletes, AST-verified renames, signature-impact notes on edits, and a cross-file `fast_move_to_file` that rewrites importers.
 
 ## When to Use
 - "install fastedit", "set up fast edit", "configure fastedit"

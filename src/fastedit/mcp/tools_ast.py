@@ -248,7 +248,7 @@ async def fast_rename_all(
     if not plan:
         return (
             f"No occurrences of '{old_name}' found under {root_dir} "
-            f"(word-boundary match, excluding strings/comments/vendor dirs)."
+            f"(AST-verified via tldr — strings/comments/vendor dirs excluded)."
         )
 
     total_count = sum(count for _, count, _ in plan.values())

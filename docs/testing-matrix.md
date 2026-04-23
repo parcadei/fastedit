@@ -141,7 +141,7 @@ Coverage: 3/13 → 13/13 common-case; Rust nested/wildcard/rename flagged.
 | 4 | Decorator-wrapped delete (`@log` + `def foo`) | Passes             | Fixed at M4.6 (symbols.py)           |
 | 5 | Multi-line signature rename + impact          | Passes             |                                      |
 | 6 | Mixed line endings (CRLF + LF)                | Passes             |                                      |
-| 7 | UTF-8 BOM prefix                              | **xfail**          | Flagged for 0.6.1                    |
+| 7 | UTF-8 BOM prefix                              | **xfail**          | Flagged for 0.5.1                    |
 | 8 | Very long identifier (500 chars)              | Passes             |                                      |
 | 9 | Symbol inside `__main__` block                | Passes             |                                      |
 | 10| Module vs local-scope shadow                  | Passes             | Locks current behavior (rename both) |
@@ -159,7 +159,7 @@ structure output, and the NEXT function inherited its line numbers.
 Fixed by routing delete through in-memory `get_ast_map_from_source`.
 Locked with `test_adv_decorator_wrapped_function_delete_removes_decorator`.
 
-### Flagged for 0.6.1
+### Flagged for 0.5.1
 
 **Bug 2: UTF-8 BOM misaligns first-line rename.** When a file has a
 UTF-8 BOM, tldr reports column positions computed against the BOM-less
@@ -203,5 +203,5 @@ Post-M4.7: 749 passed + 1 xfail + 29 skipped.
 | File                                      | Tests | Notes                                    |
 | ----------------------------------------- | ----- | ---------------------------------------- |
 | `test_hardening_cross_language.py`        | 81    | 13-lang parametrize on M1/M3; 13-lang M4 |
-| `test_hardening_adversarial.py`           | 15    | 1 xfail (BOM, flagged for 0.6.1)         |
+| `test_hardening_adversarial.py`           | 15    | 1 xfail (BOM, flagged for 0.5.1)         |
 | `test_hardening_properties_integration.py`| 13    | 5 prop + 5 integ + 3                     |
