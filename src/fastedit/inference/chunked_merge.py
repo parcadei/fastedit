@@ -37,6 +37,7 @@ from .indent import (  # noqa: F401
     _unescape_tags,
 )
 from .snippet_analysis import (  # noqa: F401
+    _DEFINITION_PATTERNS,
     _MARKER_RE,
     _extract_identifiers,
     _extract_snippet_names,
@@ -65,6 +66,30 @@ _MARKER_PHRASES = ("... existing code ...", "// ...", "# ...")
 def _is_marker_line(line: str) -> bool:
     """Check if a line is an ellipsis marker (not real code)."""
     return any(m in line for m in _MARKER_PHRASES)
+
+
+def _snippet_has_target_signature(snippet: str, target_name: str) -> bool:
+    """Check if the snippet contains a definition line naming ``target_name``.
+
+    A ``replace=<name>`` edit normally expects the snippet to start with the
+    target's signature (so ``deterministic_edit`` can align lines). But the
+    signature is redundant information — the ``replace=`` kwarg already
+    identifies the target structurally. This helper detects the common case
+    where the caller omitted the signature, so the caller can prepend it
+    from the AST and keep the existing line-matching logic intact.
+
+    Matches against all languages FastEdit supports via the shared
+    ``_DEFINITION_PATTERNS`` regexes (def/fn/func/fun/class/struct/...).
+    A match requires both the definition keyword AND the captured name
+    equalling ``target_name`` — otherwise a snippet that references another
+    `def` in a comment or docstring would spuriously match.
+    """
+    for line in snippet.splitlines():
+        for pattern in _DEFINITION_PATTERNS:
+            m = pattern.search(line)
+            if m and m.group(1) == target_name:
+                return True
+    return False
 
 
 def _check_hallucinations(
@@ -433,6 +458,45 @@ def chunked_merge(
             func_start = target_node.line_start - 1  # 0-indexed
             func_end = target_node.line_end  # 1-indexed inclusive
             original_func = "".join(original_lines[func_start:func_end])
+
+            # Auto-preserve signature: when the caller passes replace=<name>
+            # and the snippet doesn't contain the target's def/fn/func line,
+            # prepend it from the AST. The replace= kwarg already identifies
+            # the target structurally — requiring the signature in the snippet
+            # is redundant. Without this guard the deterministic_edit path
+            # (and the direct-swap fallback) treat the snippet as the full
+            # new body and silently strip the signature. See regression test
+            # ``test_replace_with_body_only_snippet_preserves_signature``.
+            #
+            # Scope: function/method/class-like symbols only. Constants,
+            # fields, and other value-like targets are intentionally
+            # excluded — their "body" is a single expression and callers
+            # always include the full declaration. Auto-prepending on a
+            # const turns a valid full-replacement snippet into a
+            # two-declaration blob that breaks deterministic_edit (see
+            # ``test_direct_swap_extend_literal_rust``).
+            _SIGNATURE_KINDS = {
+                "function", "method", "class", "interface",
+                "struct", "enum", "trait", "impl", "module",
+                "object", "protocol",
+            }
+            if (
+                target_node.kind in _SIGNATURE_KINDS
+                and func_start < len(original_lines)
+                and not _snippet_has_target_signature(snippet, replace)
+            ):
+                target_signature_line = original_lines[func_start]
+                # Preserve the caller's trailing-newline shape: snippet may
+                # or may not end in a newline; we only care that the prepended
+                # signature is terminated correctly so it forms its own line.
+                if not target_signature_line.endswith("\n"):
+                    target_signature_line += "\n"
+                snippet = target_signature_line + snippet
+                _log.info(
+                    "replace='%s': snippet missing signature, auto-prepended "
+                    "from AST (line %d)",
+                    replace, func_start + 1,
+                )
 
             edited = deterministic_edit(original_func, snippet)
             if edited is not None:
