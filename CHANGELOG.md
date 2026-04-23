@@ -2,6 +2,14 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.3.1 — 2026-04-23
+
+### Added
+- **`fastedit doctor` now includes a remote version check.** The `fastedits package` row shows `{version} (up to date)` when current, or `{version} → {latest} available (uv tool upgrade fastedits)` when a newer release exists. Shares the 24-hour PyPI-fetch cache (`~/.cache/fastedit/update-check.json`) and `FASTEDIT_NO_UPDATE_CHECK=1` escape hatch with the existing CLI exit notice and MCP banner — one HTTP call per day across all three surfaces. Falls back gracefully to `{version} (remote version check unavailable)` when PyPI can't be reached.
+
+### Changed
+- **`update_check` module grew a public `get_version_info()` helper** returning a `(current, latest)` tuple. `get_update_notice()` now builds on it instead of duplicating the cache-and-fetch logic.
+
 ## 0.3.0 — 2026-04-23
 
 ### Added

@@ -85,19 +85,18 @@ def _fetch_latest_from_pypi() -> str | None:
     except Exception:
         return None
 
+def get_version_info() -> tuple[str | None, str | None]:
+    """Return ``(current, latest)`` version pair.
 
-def get_update_notice() -> str | None:
-    """Return a one-line notice string if a newer release exists, else None.
-
-    Hits the cache first; only contacts PyPI when the cache is missing or
-    older than ``CACHE_TTL_S``. Safe to call from sync code paths.
+    Current is ``None`` when fastedits isn't importable (e.g. running from a
+    source checkout without install). Latest is ``None`` when PyPI can't be
+    reached, the network check is disabled via ``FASTEDIT_NO_UPDATE_CHECK=1``,
+    or the cache is empty and the fetch fails. Uses the same 24-hour cache
+    as :func:`get_update_notice`.
     """
-    if os.environ.get("FASTEDIT_NO_UPDATE_CHECK") == "1":
-        return None
-
     current = _installed_version()
-    if not current:
-        return None
+    if os.environ.get("FASTEDIT_NO_UPDATE_CHECK") == "1":
+        return current, None
 
     cached = _read_cache()
     now = int(time.time())
@@ -110,11 +109,19 @@ def get_update_notice() -> str | None:
         if latest:
             _write_cache({"latest": latest, "checked_at": now})
         elif cached:
-            # Fall back to the stale cache if the fetch failed — better
-            # than telling the user nothing.
             latest = cached.get("latest")
 
-    if not latest:
+    return current, latest
+
+
+def get_update_notice() -> str | None:
+    """Return a one-line notice string if a newer release exists, else None.
+
+    Hits the cache first; only contacts PyPI when the cache is missing or
+    older than ``CACHE_TTL_S``. Safe to call from sync code paths.
+    """
+    current, latest = get_version_info()
+    if not current or not latest:
         return None
 
     try:

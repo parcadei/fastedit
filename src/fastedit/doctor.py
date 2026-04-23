@@ -59,12 +59,29 @@ def _check_python(r: Report) -> None:
 
 
 def _check_package_version(r: Report) -> None:
-    try:
-        version = importlib.metadata.version("fastedits")
-        r.add("fastedits package", OK, version)
-    except importlib.metadata.PackageNotFoundError:
+    from .update_check import _parse_version, get_version_info
+
+    current, latest = get_version_info()
+    if not current:
         r.add("fastedits package", FAIL, "not installed (running from source?)", required=True)
-        r.failed_required = True
+        return
+
+    if not latest:
+        r.add("fastedits package", OK, f"{current} (remote version check unavailable)")
+        return
+
+    try:
+        if _parse_version(latest) > _parse_version(current):
+            r.add(
+                "fastedits package",
+                WARN,
+                f"{current} → {latest} available (uv tool upgrade fastedits)",
+            )
+            return
+    except Exception:
+        pass
+
+    r.add("fastedits package", OK, f"{current} (up to date)")
 
 
 def _check_optional_dep(r: Report, label: str, module: str, extra: str) -> bool:
