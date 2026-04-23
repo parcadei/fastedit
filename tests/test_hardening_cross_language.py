@@ -273,11 +273,153 @@ LANG_SPECS: dict[str, LangSpec] = {
         expected_rename_count_min=2,
         skips_strings_and_comments=False,
     ),
+    "swift": LangSpec(
+        lang="swift",
+        file_ext=".swift",
+        caller_ext=".swift",
+        symbol="oldName",
+        rename_source=textwrap.dedent("""\
+        // oldName in comment
+        func oldName() -> Int {
+            let msg = "oldName in string"
+            return 1
+        }
+
+        func local_caller() -> Int {
+            return oldName()
+        }
+        """),
+        # Swift has no simple script-level import mechanism; consumer files
+        # just reference the symbol lexically (tldr resolves it cross-file
+        # via identifier search + AST-kind disambiguation).
+        caller_source=textwrap.dedent("""\
+        func use() -> Int {
+            return oldName()
+        }
+        """),
+        expected_rename_count_min=2,
+        skips_strings_and_comments=True,
+    ),
+    "php": LangSpec(
+        lang="php",
+        file_ext=".php",
+        caller_ext=".php",
+        symbol="oldName",
+        rename_source=textwrap.dedent("""\
+        <?php
+        // oldName in comment
+        function oldName() {
+            $msg = "oldName in string";
+            return 1;
+        }
+
+        $x = oldName();
+        """),
+        caller_source=textwrap.dedent("""\
+        <?php
+        require_once 'mod.php';
+        oldName();
+        """),
+        expected_rename_count_min=2,
+        skips_strings_and_comments=True,
+    ),
+    # C# requires a containing class for method definitions — the
+    # language grammar has no top-level free functions (unlike C/C++).
+    # We use a ``static class`` container so ``oldName`` is still a
+    # callable entry point, and ``_resolve_symbol("oldName")`` finds
+    # the method by bare name (parent=Mod in the AST node, but bare-
+    # name lookup matches). Mirrors the pattern used by the M4 csharp
+    # fixture above.
+    "csharp": LangSpec(
+        lang="csharp",
+        file_ext=".cs",
+        caller_ext=".cs",
+        symbol="oldName",
+        rename_source=textwrap.dedent("""\
+        public static class Mod {
+            // oldName in comment
+            public static int oldName() {
+                string msg = "oldName in string";
+                return 1;
+            }
+
+            public static int local_caller() {
+                return oldName();
+            }
+        }
+        """),
+        caller_source=textwrap.dedent("""\
+        public class Caller {
+            public static int use() {
+                return Mod.oldName();
+            }
+        }
+        """),
+        expected_rename_count_min=2,
+        skips_strings_and_comments=False,
+    ),
+    "cpp": LangSpec(
+        lang="cpp",
+        file_ext=".cpp",
+        caller_ext=".cpp",
+        symbol="oldName",
+        rename_source=textwrap.dedent("""\
+        // oldName in comment
+        int oldName() {
+            const char* msg = "oldName in string";
+            return 1;
+        }
+
+        int local_caller() {
+            return oldName();
+        }
+        """),
+        # ``#include "mod.cpp"`` so the caller's reference is resolved
+        # as kind=call (not kind=definition via forward declaration —
+        # which check_cross_file_callers filters out).
+        caller_source=textwrap.dedent("""\
+        #include "mod.cpp"
+
+        int use() {
+            return oldName();
+        }
+        """),
+        expected_rename_count_min=2,
+        skips_strings_and_comments=True,
+    ),
+    "c": LangSpec(
+        lang="c",
+        file_ext=".c",
+        caller_ext=".c",
+        symbol="oldName",
+        rename_source=textwrap.dedent("""\
+        /* oldName in comment */
+        int oldName(void) {
+            const char* msg = "oldName in string";
+            return 1;
+        }
+
+        int local_caller(void) {
+            return oldName();
+        }
+        """),
+        caller_source=textwrap.dedent("""\
+        #include "mod.c"
+
+        int use(void) {
+            return oldName();
+        }
+        """),
+        expected_rename_count_min=2,
+        skips_strings_and_comments=True,
+    ),
 }
 
 
 REQUIRED_LANGS = ["python", "typescript", "java", "rust", "go", "kotlin"]
-STRONGLY_RECOMMENDED_LANGS = ["ruby", "javascript"]
+STRONGLY_RECOMMENDED_LANGS = [
+    "ruby", "javascript", "swift", "php", "csharp", "cpp", "c",
+]
 ALL_TESTED_LANGS = REQUIRED_LANGS + STRONGLY_RECOMMENDED_LANGS
 
 
