@@ -407,7 +407,7 @@ def get_ast_map(file_path: str, total_lines: int = 0) -> list[ASTNode]:
         _enrich_parents_from_extract(nodes, file_path)
         _log.info("get_ast_map: %d nodes via structure for %s", len(nodes), file_path)
         return nodes
-    _log.warning("get_ast_map: structure returned 0 nodes, trying extract for %s", file_path)
+    _log.debug("get_ast_map: structure returned 0 nodes, trying extract for %s", file_path)
     nodes = _get_ast_via_extract(file_path, total_lines)
     _log.info("get_ast_map: %d nodes via extract for %s", len(nodes), file_path)
     return nodes

@@ -403,3 +403,25 @@ def test_move_to_file_cli_rejects_same_file(tmp_path: Path):
     assert proc.returncode != 0
     combined = (proc.stdout + proc.stderr).lower()
     assert "fast_move" in combined or "same" in combined
+
+
+
+def test_move_to_file_cli_no_debug_print_leaks_to_stdout(tmp_path: Path):
+    """Regression: the ast_utils "structure returned 0 nodes" debug
+    message must not appear on stdout OR stderr in normal operation
+    against an empty target file (a common case)."""
+    root = _make_project(tmp_path)
+    a = root / "a.py"
+    a.write_text("def foo():\n    return 1\n")
+    b = root / "b.py"
+    b.write_text("")  # empty target -> structure returns 0 nodes
+
+    proc = _run_cli(
+        ["move-to-file", "foo", str(a), str(b), "--dry-run"],
+        cwd=root,
+    )
+
+    combined = proc.stdout + proc.stderr
+    assert "structure returned 0 nodes" not in combined, (
+        f"debug message leaked to output: {combined!r}"
+    )

@@ -16,6 +16,9 @@ from .server import _atomic_write, mcp
         "Delete a function, method, or class from a source file by name. "
         "Uses AST analysis to find the exact line range — no model inference, "
         "instant and 100% accurate. Supports all major languages. "
+        "Runs a cross-file caller-safety check via tldr references first and "
+        "REFUSES to delete if the symbol is still called/imported from other "
+        "files; pass force=True to override. "
         "Use this instead of fast_edit when removing entire symbols."
     ),
 )
@@ -208,13 +211,16 @@ async def fast_rename(file_path: str, old_name: str, new_name: str, dry_run: boo
 @mcp.tool(
     description=(
         "Rename a symbol across every supported code file under a directory "
-        "(cross-file rename). Uses word-boundary matching + tree-sitter per "
-        "file to skip strings, comments, and docstrings. Prunes .git, "
-        "node_modules, __pycache__, target, dist, vendor, and other common "
-        "vendor/build dirs. Pass dry_run=True to preview which files would "
-        "change without writing. Not scope-aware — renames every matching "
-        "identifier, so unique names are safer than short common ones. For "
-        "scope-aware refactors use an LSP-backed tool. Instant, no model."
+        "(cross-file rename). AST-verified via tree-sitter per file — skips "
+        "strings, comments, and docstrings structurally. Optional kind_filter "
+        "('class'|'function'|'method'|'variable') narrows to targets whose "
+        "definition kind matches (uses tldr for AST-verified lookup). Prunes "
+        ".git, node_modules, __pycache__, target, dist, vendor, and other "
+        "common vendor/build dirs. Pass dry_run=True to preview which files "
+        "would change without writing. Not scope-aware — renames every "
+        "matching identifier, so unique names are safer than short common "
+        "ones. For scope-aware refactors use an LSP-backed tool. Instant, no "
+        "model."
     ),
 )
 async def fast_rename_all(

@@ -59,7 +59,11 @@ async def _maybe_append_update_notice(message: str) -> str:
         "\n"
         "Always set replace or after. Omitting both triggers a whole-file merge — slow and "
         "unreliable on files > 150 lines. Works on functions of any size — the model sees only "
-        "a ~35-line region around your change, never the full file."
+        "a ~35-line region around your change, never the full file.\n"
+        "\n"
+        "When replace=<name> changes the target function's signature, the response "
+        "includes a caller-impact note summarising how many call sites reference it — "
+        "informational only, does not block the edit."
     ),
 )
 async def fast_edit(

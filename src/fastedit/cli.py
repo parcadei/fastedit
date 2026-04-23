@@ -820,7 +820,11 @@ def main():
     diff_p.add_argument("file", help="Path to source file")
 
     # --- edit (model) ---
-    edit_p = sub.add_parser("edit", help="Apply an edit snippet to a file")
+    edit_p = sub.add_parser(
+        "edit",
+        help="Apply an edit snippet to a file "
+             "(shows a caller-impact note when --replace changes a signature)",
+    )
     edit_p.add_argument("file", help="Path to source file")
     edit_p.add_argument("--snippet", required=True, help="Edit snippet or '-' for stdin")
     edit_p.add_argument("--after", default="", help="Insert new code after this symbol")
@@ -860,7 +864,11 @@ def main():
     me_p.add_argument("--api-model", default=None)
 
     # --- delete (no model) ---
-    del_p = sub.add_parser("delete", help="Delete a function/class/method by name")
+    del_p = sub.add_parser(
+        "delete",
+        help="Delete a function/class/method by name "
+             "(refuses if cross-file callers exist; use --force to override)",
+    )
     del_p.add_argument("file", help="Path to source file")
     del_p.add_argument("symbol", help="Symbol name to delete (e.g. 'my_func' or 'MyClass.method')")
     del_p.add_argument(
@@ -876,7 +884,11 @@ def main():
     mv_p.add_argument("--after", required=True, help="Move after this symbol")
 
     # --- rename (no model) ---
-    rn_p = sub.add_parser("rename", help="Rename all occurrences of a symbol")
+    rn_p = sub.add_parser(
+        "rename",
+        help="Rename all AST-verified occurrences of a symbol in a single "
+             "file (skips strings/comments; supports --dry-run)",
+    )
     rn_p.add_argument("file", help="Path to source file")
     rn_p.add_argument("old_name", help="Current symbol name")
     rn_p.add_argument("new_name", help="New symbol name")
