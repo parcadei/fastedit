@@ -134,3 +134,136 @@ def test_symlinks_are_not_followed(tmp_path: Path):
     # Only one entry, not two via the symlinked path.
     assert len(plan) == 1
     assert (tmp_path / "src" / "a.py") in plan
+
+
+def test_kind_filter_class_only(tmp_path: Path):
+    """kind_filter='class' must only rename when the target's definition is a class.
+
+    Same-name collisions (a class Foo and a local variable Foo) are lumped by
+    tldr into one references group keyed on the dominant definition. The filter
+    is satisfied when that definition.kind matches. When it does not (e.g. the
+    target resolves to a variable, but the caller asked for class), the plan is
+    empty — preventing an accidental variable rename through the class knob.
+    """
+    # Case A: target defines a class. filter='class' should rename it.
+    (tmp_path / "a.py").write_text(
+        "class MySymbol:\n    pass\n\nprint(MySymbol)\n",
+    )
+    plan = do_cross_file_rename(tmp_path, "MySymbol", "RenamedSymbol", kind_filter="class")
+    assert (tmp_path / "a.py") in plan, "class rename under kind_filter='class' must apply"
+    new_content, count, _ = plan[tmp_path / "a.py"]
+    assert "class RenamedSymbol" in new_content
+    assert "print(RenamedSymbol)" in new_content
+    assert count == 2
+
+    # Case B: filter='function' on a class definition -> empty plan (no-op).
+    plan2 = do_cross_file_rename(tmp_path, "MySymbol", "Nope", kind_filter="function")
+    assert plan2 == {}, "kind_filter mismatch on definition must yield empty plan"
+
+    # Case C: variable-only definition, filter='class' -> empty plan.
+    vpath = tmp_path / "b.py"
+    vpath.write_text("my_var = 1\nprint(my_var)\n")
+    plan3 = do_cross_file_rename(tmp_path, "my_var", "renamed_var", kind_filter="class")
+    assert vpath not in plan3, "variable must not be renamed when filter='class'"
+
+
+def test_ast_verified_strings_and_comments_skipped(tmp_path: Path):
+    """Regression: strings, docstrings, and substring-containing comments must
+    never be rewritten. This locks AST-verified behavior — with the tldr-driven
+    engine, low-confidence (kind='other') hits from string/comment substrings
+    must be filtered out via --min-confidence 0.9."""
+    src = (
+        'def target():\n'
+        '    """docstring mentions target here"""\n'
+        '    # this comment contains target as a word\n'
+        '    x = "string literal with target inside"\n'
+        '    return 1\n'
+        '\n'
+        'target()\n'
+    )
+    path = tmp_path / "a.py"
+    path.write_text(src)
+
+    plan = do_cross_file_rename(tmp_path, "target", "renamed")
+    assert path in plan
+    new_content, count, _ = plan[path]
+
+    # Only the def + the final call() site should change — 2 real refs.
+    assert count == 2, f"expected 2 real refs, got {count}"
+    # AST-verified preservation: docstring, comment, string literal all intact.
+    assert "docstring mentions target here" in new_content
+    assert "# this comment contains target as a word" in new_content
+    assert '"string literal with target inside"' in new_content
+    # Real refs are rewritten.
+    assert "def renamed()" in new_content
+
+
+def test_kind_filter_function_only_skips_class_definition(tmp_path: Path):
+    """kind_filter='function' must not apply when the target is a class.
+
+    Complements test_kind_filter_class_only: filter is bidirectional and
+    defensively rejects mismatched definition kinds both ways."""
+    (tmp_path / "a.py").write_text(
+        "class Shape:\n    pass\n\nShape()\n",
+    )
+    plan = do_cross_file_rename(tmp_path, "Shape", "Renamed", kind_filter="function")
+    assert plan == {}, "function filter must not match a class definition"
+
+
+def test_kind_filter_none_renames_everything(tmp_path: Path):
+    """kind_filter=None must preserve the default (non-filtered) behavior."""
+    (tmp_path / "a.py").write_text("def worker(): pass\nworker()\n")
+    plan = do_cross_file_rename(tmp_path, "worker", "labor", kind_filter=None)
+    assert (tmp_path / "a.py") in plan
+    new_content, count, _ = plan[tmp_path / "a.py"]
+    assert count == 2
+    assert "def labor()" in new_content
+
+
+def test_kind_filter_invalid_value_raises(tmp_path: Path):
+    """An unrecognized kind_filter value must raise ValueError, not silently
+    ignore. Protects against typos like 'func' or 'fn'."""
+    (tmp_path / "a.py").write_text("def t(): pass\n")
+    with pytest.raises(ValueError, match="kind_filter"):
+        do_cross_file_rename(tmp_path, "t", "u", kind_filter="fn")
+
+
+def test_tldr_driven_rename_rewrites_imports(tmp_path: Path):
+    """Import statement references (kind='import') must be rewritten, not
+    just direct usages. Regression for cross-module rename propagation."""
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "__init__.py").write_text("")
+    (tmp_path / "pkg" / "core.py").write_text("def helper():\n    return 1\n")
+    (tmp_path / "main.py").write_text(
+        "from pkg.core import helper\n\nhelper()\n",
+    )
+    plan = do_cross_file_rename(tmp_path, "helper", "utility")
+    paths = {p.relative_to(tmp_path).as_posix() for p in plan}
+    assert "pkg/core.py" in paths
+    assert "main.py" in paths
+    main_content = plan[tmp_path / "main.py"][0]
+    assert "from pkg.core import utility" in main_content
+    assert "utility()" in main_content
+
+
+def test_tldr_driven_skipped_count_matches_docstring_mentions(tmp_path: Path):
+    """skipped count reflects how many word-boundary hits tldr did NOT verify
+    as real references — i.e. hits inside strings/comments/docstrings. This
+    is the client-side computation that replaces tldr's (absent) skip count.
+    """
+    path = tmp_path / "a.py"
+    path.write_text(
+        'def widget():\n'
+        '    """widget widget widget"""  # three mentions in one docstring\n'
+        '    return 1\n'
+        '\n'
+        'widget()\n'
+    )
+    plan = do_cross_file_rename(tmp_path, "widget", "gadget")
+    assert path in plan
+    new_content, count, skipped = plan[path]
+    # Two real refs: the def and the call.
+    assert count == 2
+    # Three docstring mentions + zero comment hits (none) = 3 skipped.
+    assert skipped == 3, f"expected 3 skipped (docstring hits), got {skipped}"
+    assert '"""widget widget widget"""' in new_content
