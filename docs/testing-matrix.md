@@ -1,9 +1,9 @@
 # Testing Matrix — M1-M4 Cross-Language Coverage
 
-Milestone 4.7 (final pre-release) outsources per-language work to
-`tldr` wherever it already exposes the primitive. Result: 13/13 lang
-coverage on M1/M3 and 13/13 common-case on M4 with Rust complex cases
-flagged as manual review.
+Final state at 0.5.0 ship (milestone M4.9) plus two post-ship
+test-extension commits (91fb4b5, 13ad6cc). fastedit outsources
+per-language AST work to `tldr` wherever tldr exposes the primitive.
+Result: true 13/13 coverage on M1/M2/M3/M4.
 
 ## Language × Feature Matrix
 
@@ -11,16 +11,20 @@ flagged as manual review.
 | ------------------------- | --- | --- | --- | --- | ---- | ---- | ------ | ---- | ----- | --- | -- | --- | -- |
 | M1 `fast_rename` (single) | ✅  | ✅  | ✅  | ✅  | ✅   | ✅   | ✅     | ✅   | ✅    | ✅  | ✅ | ✅  | ✅ |
 | M2 delete-safety (refs)   | ✅  | ✅  | ✅  | ✅  | ✅   | ✅   | ✅     | ✅   | ✅    | ✅  | ✅ | ✅  | ✅ |
-| M2 CLI delete end-to-end  | ✅  | —   | —   | —   | —    | —    | —      | —    | —     | —   | —  | —   | —  |
+| M2 CLI delete end-to-end  | ✅  | ✅  | ✅  | ✅  | ✅   | ✅   | ✅     | ✅   | ✅    | ✅  | ✅ | ✅  | ✅ |
 | M3 signature-change       | ✅  | ✅  | ✅  | ✅  | ✅   | ✅   | ✅     | ✅   | ✅    | ✅  | ✅ | ✅  | ✅ |
-| M4 move-to-file (imports) | ✅  | ✅  | ✅  | ✅  | ✅*  | ✅   | ✅     | ✅   | ✅    | ✅  | ✅ | ✅  | ✅ |
+| M4 move-to-file (imports) | ✅  | ✅  | ✅  | ✅  | ✅   | ✅   | ✅     | ✅   | ✅    | ✅  | ✅ | ✅  | ✅ |
 
 Legend:
 - ✅ = tested + passes
-- ✅* = common case supported; complex cases (Rust nested use-trees,
-  wildcard `use *`, aliased `use foo::X as Y`) are flagged for manual
-  review rather than half-handled.
 - — = not tested (out of scope; see note)
+
+Note on M2 CLI delete: commit 91fb4b5 dropped the python-only skip in
+`test_m2_force_override_is_monotonic` and parametrized it across
+`ALL_TESTED_LANGS`. Commit 13ad6cc then extended `LANG_SPECS` from 8
+to the full 13 languages (adding swift, php, c#, cpp, c fixtures), so
+the CLI delete path is now genuinely exercised end-to-end on every
+supported language.
 
 ## M4.7 outsourcing — what changed
 
@@ -46,6 +50,15 @@ equal `old_name` before any rewrite, so column-math surprises remain
 caught.
 
 Coverage: 5/13 → 13/13.
+
+**Update (tldr 0.1.6):** tldr now emits `kind=definition` and
+`kind=call` on all 13 langs. The 5 previously tier-2 langs
+(swift, php, c#, cpp, c) get proper AST-kinds instead of just
+`kind=other`. The 0.5 confidence tag is now exclusively for
+string/comment substring detection via tldr's lexical fallback
+layer. fastedit's confidence filter is unchanged, but has a cleaner
+semantic basis: 1.0 = real code (AST-verified on all 13), 0.5 =
+string/comment noise.
 
 ### M3 — outsourced signature detection
 
@@ -107,7 +120,8 @@ syntax:
   quotes.
 - **Rust `use` tree**: simple (`use crate::foo::Bar;`), braced
   multi-import (`use crate::foo::{Bar, Baz};` → split), and braced
-  single. Nested / wildcard / renamed forms flagged for manual review.
+  single. Nested / wildcard / aliased forms handled at M4.9 — see
+  "Fixed at M4.9" section below.
 - **Module-name-only** (swift): `import Foo` — swap module name.
 - **File-path require** (ruby, lua, c/cpp): `require_relative "a"`,
   `require "a"`, `#include "a.h"`. tldr can't find these via the
@@ -127,11 +141,13 @@ non-trivial build configs may need to adjust the rewritten
 specifier post-move, but the import line *is* rewritten — no more
 hard rejection.
 
-Coverage: 3/13 → 13/13 common-case; Rust nested/wildcard/rename flagged.
+Coverage: 3/13 → 13/13. Rust nested/wildcard/aliased use trees
+handled at M4.9 (see "Fixed at M4.9" section below for the wildcard
+append-don't-rewrite approach).
 
 ## Adversarial cases
 
-12 cases shipped at M4.6; results unchanged at M4.7.
+12 cases shipped at M4.6; #7 closed at M4.9.
 
 | # | Case                                          | Outcome            | Disposition                          |
 | - | --------------------------------------------- | ------------------ | ------------------------------------ |
@@ -141,7 +157,7 @@ Coverage: 3/13 → 13/13 common-case; Rust nested/wildcard/rename flagged.
 | 4 | Decorator-wrapped delete (`@log` + `def foo`) | Passes             | Fixed at M4.6 (symbols.py)           |
 | 5 | Multi-line signature rename + impact          | Passes             |                                      |
 | 6 | Mixed line endings (CRLF + LF)                | Passes             |                                      |
-| 7 | UTF-8 BOM prefix                              | **xfail**          | Flagged for 0.5.1                    |
+| 7 | UTF-8 BOM prefix                              | Passes             | Fixed at M4.9                        |
 | 8 | Very long identifier (500 chars)              | Passes             |                                      |
 | 9 | Symbol inside `__main__` block                | Passes             |                                      |
 | 10| Module vs local-scope shadow                  | Passes             | Locks current behavior (rename both) |
@@ -159,22 +175,28 @@ structure output, and the NEXT function inherited its line numbers.
 Fixed by routing delete through in-memory `get_ast_map_from_source`.
 Locked with `test_adv_decorator_wrapped_function_delete_removes_decorator`.
 
-### Flagged for 0.5.1
+### Fixed at M4.9
 
-**Bug 2: UTF-8 BOM misaligns first-line rename.** When a file has a
-UTF-8 BOM, tldr reports column positions computed against the BOM-less
-content, but the on-disk bytes include the BOM. The column-to-byte
-math then misaligns on line 1; the safety guard correctly skips the
-broken replacement rather than corrupting output.
+**Bug 2: UTF-8 BOM misaligns first-line rename (fixed).** Root cause:
+tldr emits column positions as BYTE offsets, not character offsets.
+fastedit's `_char_col_to_byte_offset` helper was double-correcting
+— treating tldr's columns as character indices and then re-counting
+bytes. On files with a UTF-8 BOM (3 bytes at offset 0), the column
+for a line-1 symbol was off by 3 bytes and the rewrite was silently
+skipped by the slice-match safety guard. Fixed via
+`_tldr_col_to_byte_offset` which trusts tldr's column as the byte
+offset directly (col - 1). `test_adv_utf8_bom_prefix` now passes.
 
-- **Severity:** low. Failure mode is safe (no corruption, just silent
-  missed rename on line 1). BOM-prefixed source files are uncommon.
-- **Fix path:** strip BOM before computing line-0 byte offsets, or
-  pass the BOM-less content to `_apply_refs_to_content` and offset
-  the result.
-- **Test:** `test_adv_utf8_bom_prefix` — locked as `xfail(strict=True)`
-  so the test FAILS the suite if the bug is silently fixed without
-  removing the xfail marker.
+**Bug 3: Rust complex use-trees rejected (fixed).** Previously flagged
+for manual review: nested (`use foo::{Bar, Baz};`), aliased
+(`use foo::X as Y;`), and wildcard (`use foo::*;`) imports in
+fast_move_to_file. Resolution:
+- Nested trees: split into individual `use` statements, rewrite each.
+- Aliased: preserve the alias, swap the source path.
+- Wildcard: leave the `use foo::*;` in place (wildcard is idiomatic
+  Rust; rewriting it may violate user style). Append an explicit
+  `use new_loc::Bar;` below, plus an advisory warning so the user
+  can clean up manually.
 
 ## Properties verified
 
@@ -194,14 +216,17 @@ broken replacement rather than corrupting output.
 4. Rename-class-then-delete-unrelated: kind_filter safety
 5. Move-then-check-source-empty: extraction cleans up
 
-## Test counts (post-M4.7)
+## Test counts
 
 Baseline pre-M4.6: 641 passed.
 Post-M4.6: 725 passed + 1 xfail + 32 skipped.
 Post-M4.7: 749 passed + 1 xfail + 29 skipped.
+Post-M4.9 (0.5.0 ship): 756 passed + 0 xfail + 29 skipped.
+Post-91fb4b5 (CLI delete 13-lang extension): 763 passed + 0 xfail + 24 skipped.
+Post-13ad6cc (LANG_SPECS extended to true 13): 788 passed + 0 xfail + 24 skipped.
 
-| File                                      | Tests | Notes                                    |
-| ----------------------------------------- | ----- | ---------------------------------------- |
-| `test_hardening_cross_language.py`        | 81    | 13-lang parametrize on M1/M3; 13-lang M4 |
-| `test_hardening_adversarial.py`           | 15    | 1 xfail (BOM, flagged for 0.5.1)         |
-| `test_hardening_properties_integration.py`| 13    | 5 prop + 5 integ + 3                     |
+| File                                      | Tests | Notes                                        |
+| ----------------------------------------- | ----- | -------------------------------------------- |
+| `test_hardening_cross_language.py`        | 118   | 13-lang parametrize on M1/M2/M3; 13-lang M4  |
+| `test_hardening_adversarial.py`           | 16    | All pass (BOM case #7 closed at M4.9)        |
+| `test_hardening_properties_integration.py`| 13    | 5 prop + 5 integ + 3                         |
