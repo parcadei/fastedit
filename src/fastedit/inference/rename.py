@@ -268,20 +268,24 @@ def _run_tldr_references(
     return data
 
 
-def _char_col_to_byte_offset(line_bytes: bytes, char_col_1_indexed: int) -> int:
-    """Convert tldr's 1-indexed character column to a 0-indexed byte offset
-    within the given line bytes. Columns beyond the line length clamp to end.
+def _tldr_col_to_byte_offset(line_bytes: bytes, col_1_indexed: int) -> int:
+    """Convert tldr's 1-indexed column to a 0-indexed byte offset within the
+    given line bytes.
+
+    Empirically, tldr emits *byte* columns (1-indexed), not character columns
+    — this was confirmed by observing that a multi-byte UTF-8 character
+    earlier in a line shifts the reported column by the extra byte count
+    (e.g. `x = "ω"; f = oldFunc()` reports column 15 for `o`, matching its
+    byte index 14+1, not its char index 13+1). Likewise, a BOM on line 1
+    shifts the first real symbol by 3 columns because the BOM is 3 bytes.
+
+    This helper therefore returns ``col - 1`` directly (clamped to line
+    length). Keeping the translator named and central means if tldr ever
+    changes semantics we only have one place to fix.
     """
-    if char_col_1_indexed <= 1:
+    if col_1_indexed <= 1:
         return 0
-    try:
-        line_text = line_bytes.decode("utf-8")
-    except UnicodeDecodeError:
-        # ASCII fallback: char col == byte col.
-        return min(char_col_1_indexed - 1, len(line_bytes))
-    # Character index = col - 1, clamped.
-    char_idx = min(char_col_1_indexed - 1, len(line_text))
-    return len(line_text[:char_idx].encode("utf-8"))
+    return min(col_1_indexed - 1, len(line_bytes))
 
 
 def _apply_refs_to_content(
@@ -331,8 +335,8 @@ def _apply_refs_to_content(
         for ref in line_refs:
             col = ref.get("column", 0)
             end_col = ref.get("end_column", col + len(old_name))
-            byte_start = _char_col_to_byte_offset(raw, col)
-            byte_end = _char_col_to_byte_offset(raw, end_col)
+            byte_start = _tldr_col_to_byte_offset(raw, col)
+            byte_end = _tldr_col_to_byte_offset(raw, end_col)
             # Verify the slice we're about to replace actually equals
             # old_name. Guards against column-math surprises on exotic
             # unicode or tldr version skew.

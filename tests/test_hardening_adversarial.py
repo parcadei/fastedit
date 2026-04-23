@@ -316,23 +316,17 @@ def test_adv_mixed_line_endings(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Known limitation for 0.5.1: when a file has a UTF-8 BOM, tldr "
-        "reports column positions offset by the BOM length (it parses "
-        "the content without the BOM, but the file on disk includes it). "
-        "The byte-vs-column math in _apply_refs_to_content then misaligns "
-        "on line 1 and the guard at rename.py:315 correctly skips the "
-        "broken replacement. The call-site rename (line 4+) still works. "
-        "Net effect: BOM files only rename non-first-line occurrences. "
-        "Fix requires stripping BOM before computing byte offsets on line 0."
-    ),
-    strict=True,
-)
 def test_adv_utf8_bom_prefix(tmp_path: Path):
     """File with a UTF-8 BOM at the start must parse and rename. The
     BOM should be preserved through the rename (it's an encoding
-    artifact, not a syntactic element)."""
+    artifact, not a syntactic element).
+
+    Fixed in 0.5.0 by switching ``_tldr_col_to_byte_offset`` to treat tldr's
+    column field as a 1-indexed BYTE column (which it empirically is),
+    rather than attempting a char->byte translation. The BOM bytes at the
+    start of line 1 then align naturally: tldr reports column N = byte N-1
+    in the raw line bytes, BOM or not.
+    """
     if not TLDR_AVAILABLE:
         pytest.skip("tldr binary not on PATH")
 
@@ -346,6 +340,33 @@ def test_adv_utf8_bom_prefix(tmp_path: Path):
     new_content, count, _ = do_rename_ast(path, "oldFunc", "newFunc")
     assert count >= 2, f"count={count}, content={new_content!r}"
     assert "def newFunc" in new_content
+    assert "x = newFunc()" in new_content
+    # BOM must be preserved verbatim at byte 0 of the rewritten content.
+    assert new_content.startswith("\ufeff"), (
+        f"BOM was stripped from output: {new_content[:20]!r}"
+    )
+
+
+def test_adv_utf8_bom_symbol_on_later_line(tmp_path: Path):
+    """BOM files where the target symbol is on a later line must also
+    rename cleanly. Guards against a fix that only handled line 1 and
+    regressed BOM files where everything else worked previously.
+    """
+    if not TLDR_AVAILABLE:
+        pytest.skip("tldr binary not on PATH")
+
+    root = _make_project(tmp_path)
+    path = root / "mod.py"
+    # BOM + a comment line + the def, so the symbol is on line 3.
+    path.write_bytes(
+        b"\xef\xbb\xbf# header\n\ndef oldFunc():\n    return 1\n\nx = oldFunc()\n"
+    )
+
+    new_content, count, _ = do_rename_ast(path, "oldFunc", "newFunc")
+    assert count >= 2, f"count={count}, content={new_content!r}"
+    assert "def newFunc" in new_content
+    assert "x = newFunc()" in new_content
+    assert new_content.startswith("\ufeff")
 
 
 # ---------------------------------------------------------------------------
