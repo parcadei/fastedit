@@ -38,6 +38,59 @@ def _is_marker(line: str) -> bool:
     return any(m in line for m in _MARKER_PHRASES)
 
 
+def _replacement_key(line: str) -> str | None:
+    """Extract the LHS of an assignment-like line, for replacement matching.
+
+    Returns a normalized key when the line is an assignment/binding whose
+    LHS can be used to identify it as a potential replacement for a line in
+    a marker-preserved gap. Returns ``None`` for lines that are not
+    assignment-like (insertion semantics, not replacement).
+
+    Handles common assignment forms across Python, JS/TS, Rust, Go, etc.:
+
+      - ``self._data = {}``         → ``self._data``
+      - ``x = 1``                   → ``x``
+      - ``let x = 5``               → ``let x``
+      - ``const x: number = 5``     → ``const x: number``
+      - ``x += 1``                  → ``x`` (compound assignment)
+      - ``x: int = 5``              → ``x: int``
+      - ``name := "foo"``           → ``name`` (Go short-decl)
+
+    Comparison operators (``==``, ``!=``, ``<=``, ``>=``) are NOT treated
+    as assignments — they indicate the line is a condition, not a binding,
+    and should never trigger replacement matching.
+    """
+    stripped = line.strip()
+    if not stripped:
+        return None
+    # Split on the first assignment-like operator. Exclude comparison ops.
+    # Simple scan: find first '=' that isn't part of '==' / '!=' / '<=' / '>='.
+    eq_idx = -1
+    i = 0
+    while i < len(stripped):
+        c = stripped[i]
+        if c == "=":
+            prev = stripped[i - 1] if i > 0 else ""
+            nxt = stripped[i + 1] if i + 1 < len(stripped) else ""
+            # Skip comparison ops: ==, !=, <=, >=, =>
+            if prev in ("=", "!", "<", ">") or nxt == "=" or prev == "=" or nxt == ">":
+                i += 1
+                continue
+            # Strip trailing compound-assignment char from LHS (+=, -=, *=, /=, %=, |=, &=, ^=, :=)
+            lhs_end = i
+            if lhs_end > 0 and stripped[lhs_end - 1] in "+-*/%|&^:":
+                lhs_end -= 1
+            eq_idx = lhs_end
+            break
+        i += 1
+    if eq_idx <= 0:
+        return None
+    lhs = stripped[:eq_idx].strip()
+    if not lhs:
+        return None
+    return lhs
+
+
 def _is_ambiguous_anchor(stripped: str) -> bool:
     """Check if a stripped line is too short/common to be a reliable anchor."""
     if stripped in _AMBIGUOUS_LINES:
@@ -344,6 +397,18 @@ def deterministic_edit(
             # code, the marker in the snippet sits at a deeper indent than
             # the preserved body is at in the original. Shift gap lines by
             # the indent delta so they sit correctly inside the wrapper.
+            #
+            # Bug 3 fix (v0.2.3) — new-line-replaces-gap-line: when a "new"
+            # line in the same section as a marker shares its LHS with a
+            # line in the preserved gap (e.g. ``self._data = OrderedDict()``
+            # vs ``self._data = {}``), the author's intent is to REPLACE
+            # that gap line, not to insert a duplicate alongside it. Without
+            # this, ``replace=<method>`` with a minimal partial snippet
+            # silently emits BOTH the old and new assignment. We detect
+            # these by comparing the ``_replacement_key`` of each new line
+            # against each gap line and skipping matches when emitting the
+            # gap. See regression tests in
+            # ``tests/test_class_method_partial_replace.py``.
             marker_entry = next(e for e in section if e[0] == "marker")
             marker_snip_indent = (
                 len(snip_raw[marker_entry[1]])
@@ -378,6 +443,49 @@ def deterministic_edit(
                 "\t" if orig_lines[ctx_orig].startswith("\t") else " "
             )
 
+            # Build a map from replacement key → snippet indent for "new"
+            # lines in this section. A gap line is considered REPLACED by
+            # a new line only when all of:
+            #   (1) the LHS matches,
+            #   (2) the original gap indent matches the new-line indent, AND
+            #   (3) exactly ONE gap line matches that (key, indent) pair.
+            #
+            # Without (3) a snippet like ``data = normalize(data)`` after
+            # a marker would wrongly delete both ``data = validate(data)``
+            # and ``data = transform(data)`` — the author's intent there is
+            # to APPEND, not replace, because the LHS alone doesn't pin
+            # down which line they meant. Without (2), wrap_block snippets
+            # that rebind the same name inside a new scope (``cleaned =
+            # None`` inside an ``except:`` at indent 8, vs ``cleaned =
+            # clean(data)`` at indent 4 inside the preserved ``try:``
+            # body) would wrongly drop the preserved line. Both guards
+            # are load-bearing — see regression tests.
+            new_line_key_indents: dict[str, set[int]] = {}
+            for entry in section:
+                if entry[0] == "new":
+                    sl = entry[3]
+                    key = _replacement_key(sl)
+                    if key is not None:
+                        new_line_key_indents.setdefault(key, set()).add(
+                            len(sl) - len(sl.lstrip())
+                        )
+
+            # Count gap-line matches per (key, indent) so we can enforce
+            # the exactly-one rule.
+            gap_match_counts: dict[tuple[str, int], int] = {}
+            for i in range(ctx_orig + 1, next_ctx_orig):
+                gap_line = orig_lines[i]
+                if not gap_line.strip():
+                    continue
+                gap_key = _replacement_key(gap_line)
+                if gap_key is None or gap_key not in new_line_key_indents:
+                    continue
+                gap_indent = len(gap_line) - len(gap_line.lstrip())
+                if gap_indent not in new_line_key_indents[gap_key]:
+                    continue
+                k = (gap_key, gap_indent)
+                gap_match_counts[k] = gap_match_counts.get(k, 0) + 1
+
             gap_emitted = False
             for entry in section:
                 if entry[0] == "marker" and not gap_emitted:
@@ -386,7 +494,22 @@ def deterministic_edit(
                         if not gap_line.strip():
                             # Preserve blank lines as-is (no indent added).
                             result.append(gap_line)
-                        elif indent_delta > 0:
+                            continue
+                        # Skip gap lines that are uniquely identified as
+                        # being replaced by a "new" line in this section.
+                        gap_key = _replacement_key(gap_line)
+                        if gap_key is not None and gap_key in new_line_key_indents:
+                            gap_indent = (
+                                len(gap_line) - len(gap_line.lstrip())
+                            )
+                            if (
+                                gap_indent in new_line_key_indents[gap_key]
+                                and gap_match_counts.get(
+                                    (gap_key, gap_indent), 0
+                                ) == 1
+                            ):
+                                continue
+                        if indent_delta > 0:
                             result.append(indent_char * indent_delta + gap_line)
                         elif indent_delta < 0:
                             # Strip up to |indent_delta| leading indent chars,
@@ -463,12 +586,56 @@ def deterministic_edit(
         trailing_indent_delta = 0
         trailing_indent_char = " "
 
+    # Replacement keys+indents for "new" lines in the trailing section —
+    # any suffix line with a matching (LHS, indent) that pins down
+    # EXACTLY ONE candidate is skipped (bug 3 fix, same logic as the
+    # in-section marker branch).
+    trailing_new_key_indents: dict[str, set[int]] = {}
+    for entry in trailing:
+        if entry[0] == "new":
+            sl = entry[3]
+            key = _replacement_key(sl)
+            if key is not None:
+                trailing_new_key_indents.setdefault(key, set()).add(
+                    len(sl) - len(sl.lstrip())
+                )
+
+    trailing_match_counts: dict[tuple[str, int], int] = {}
+    for i in range(last_orig + 1, len(orig_lines)):
+        line = orig_lines[i]
+        if not line.strip():
+            continue
+        suffix_key = _replacement_key(line)
+        if suffix_key is None or suffix_key not in trailing_new_key_indents:
+            continue
+        suffix_indent = len(line) - len(line.lstrip())
+        if suffix_indent not in trailing_new_key_indents[suffix_key]:
+            continue
+        k = (suffix_key, suffix_indent)
+        trailing_match_counts[k] = trailing_match_counts.get(k, 0) + 1
+
     def _emit_suffix_with_indent() -> None:
         for i in range(last_orig + 1, len(orig_lines)):
             line = orig_lines[i]
             if not line.strip():
                 result.append(line)
-            elif trailing_indent_delta > 0:
+                continue
+            # Skip suffix lines uniquely identified as being replaced by
+            # a "new" line in the trailing section.
+            suffix_key = _replacement_key(line)
+            if (
+                suffix_key is not None
+                and suffix_key in trailing_new_key_indents
+            ):
+                suffix_indent = len(line) - len(line.lstrip())
+                if (
+                    suffix_indent in trailing_new_key_indents[suffix_key]
+                    and trailing_match_counts.get(
+                        (suffix_key, suffix_indent), 0
+                    ) == 1
+                ):
+                    continue
+            if trailing_indent_delta > 0:
                 result.append(
                     trailing_indent_char * trailing_indent_delta + line
                 )
