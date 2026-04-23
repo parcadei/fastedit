@@ -19,8 +19,22 @@ from .server import _atomic_write, mcp
         "Use this instead of fast_edit when removing entire symbols."
     ),
 )
-async def fast_delete(file_path: str, symbol: str) -> str:
-    """Remove a function, method, or class from a file using AST analysis."""
+async def fast_delete(file_path: str, symbol: str, force: bool = False) -> str:
+    """Remove a function, method, or class from a file using AST analysis.
+    When ``force`` is False (default) the tool first runs `tldr references`
+    at project scope. If the symbol is still called/imported from other
+    files the delete is REFUSED with a structured message listing those
+    callers (truncated at 10). Pass ``force=True`` to override, or run
+    `fast_rename_all` to migrate callers first.
+    If `tldr` is unavailable (missing binary, timeout, etc.) the check
+    falls open — a note is appended to the success message and the delete
+    proceeds. We don't fail-close on infra issues.
+    """
+    from ..inference.caller_safety import (
+        _find_project_root,
+        check_cross_file_callers,
+        format_refusal_message,
+    )
     ctx = mcp.get_context()
     lc = ctx.request_context.lifespan_context
     backups: dict = lc["backups"]
@@ -33,6 +47,20 @@ async def fast_delete(file_path: str, symbol: str) -> str:
     language = detect_language(path)
 
     async with file_locks[file_path]:
+        # M2: cross-file caller-safety check. Skipped on force=True.
+        if not force:
+            project_root = _find_project_root(path)
+            refs = check_cross_file_callers(
+                file_path=path, symbol=symbol, project_root=project_root,
+            )
+            if refs:
+                return format_refusal_message(
+                    symbol,
+                    refs,
+                    "Pass force=True (MCP) / --force (CLI) to delete "
+                    "anyway, or run fast_rename_all to migrate callers first.",
+                )
+
         try:
             result = delete_symbol(
                 file_path=file_path,

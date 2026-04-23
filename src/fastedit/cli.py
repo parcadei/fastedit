@@ -399,6 +399,11 @@ def cmd_multi_edit(args):
 def cmd_delete(args):
     """Delete a function, method, or class from a file using AST analysis."""
     from .data_gen.ast_analyzer import detect_language
+    from .inference.caller_safety import (
+        _find_project_root,
+        check_cross_file_callers,
+        format_refusal_message,
+    )
     from .inference.chunked_merge import delete_symbol
     from .mcp.backup import BackupStore, _atomic_write
 
@@ -409,6 +414,26 @@ def cmd_delete(args):
 
     language = detect_language(path)
     backups = BackupStore()
+
+    # Cross-file caller-safety check (M2). Skipped when --force is set.
+    force = bool(getattr(args, "force", False))
+    safety_note = ""
+    if not force:
+        project_root = _find_project_root(path)
+        refs = check_cross_file_callers(
+            file_path=path, symbol=args.symbol, project_root=project_root,
+        )
+        if refs:
+            print(
+                format_refusal_message(
+                    args.symbol,
+                    refs,
+                    "Pass --force to delete anyway, or run "
+                    "`fastedit rename-all` to migrate callers first.",
+                ),
+                file=sys.stderr,
+            )
+            sys.exit(2)
 
     try:
         result = delete_symbol(
@@ -428,7 +453,7 @@ def cmd_delete(args):
     print(
         f"Deleted {result.deleted_kind} '{result.deleted_symbol}' from {args.file}. "
         f"Removed L{result.deleted_lines[0]}-{result.deleted_lines[1]} "
-        f"({result.lines_removed} lines). 0 model tokens.{warn}"
+        f"({result.lines_removed} lines). 0 model tokens.{warn}{safety_note}"
     )
 
 
@@ -764,6 +789,11 @@ def main():
     del_p = sub.add_parser("delete", help="Delete a function/class/method by name")
     del_p.add_argument("file", help="Path to source file")
     del_p.add_argument("symbol", help="Symbol name to delete (e.g. 'my_func' or 'MyClass.method')")
+    del_p.add_argument(
+        "--force", action="store_true",
+        help="Delete even if other files still reference the symbol "
+             "(skips the cross-file caller-safety check).",
+    )
 
     # --- move (no model) ---
     mv_p = sub.add_parser("move", help="Move a symbol to after another symbol")
