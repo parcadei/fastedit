@@ -96,6 +96,70 @@ def _extract_snippet_names(snippet: str, language: str | None = None) -> list[st
 
     return _regex_extract_names(snippet)
 
+def _top_level_extras(
+    snippet: str, language: str | None, target: str
+) -> list[str]:
+    """Return function/method names in the snippet other than `target`.
+
+    Used by the `replace=X` guard to detect silent-deletion risk: nested
+    methods inside a class snippet are extras (the original class may have
+    other methods that would be silently dropped), but field/variable
+    declarations are not — a field-only class snippet is a safe full-class
+    swap with no deletion risk.
+
+    Strategy: shell out to `tldr structure` on a temp file and filter
+    `definitions` to kind ∈ {method, function}. tldr is already a fastedit
+    prerequisite (used by fast_read, fast_search, etc.), so this introduces
+    no new dep. Latency is ~10ms per call — negligible for a one-shot guard.
+
+    Falls back to fastedit's in-process `analyze_file` if tldr is missing
+    or misbehaves.
+    """
+    if not language:
+        return [n for n in _extract_snippet_names(snippet, language) if n != target]
+
+    ext = _LANG_EXT.get(language)
+    if ext:
+        tmp_path = None
+        try:
+            fd, tmp_path = tempfile.mkstemp(suffix=ext)
+            os.write(fd, snippet.encode())
+            os.close(fd)
+            result = subprocess.run(
+                ["tldr", "structure", tmp_path, "--format", "compact"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                data = json.loads(result.stdout)
+                files = data.get("files", [])
+                if files:
+                    defs = files[0].get("definitions", [])
+                    return [
+                        d["name"] for d in defs
+                        if d.get("name") and d.get("name") != target
+                        and d.get("kind") in ("method", "function")
+                    ]
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError, FileNotFoundError):
+            pass
+        finally:
+            if tmp_path:
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
+
+    try:
+        from ..data_gen.ast_analyzer import analyze_file
+        fs = analyze_file(snippet, language)
+    except Exception:
+        return [n for n in _extract_snippet_names(snippet, language) if n != target]
+    extras: list[str] = []
+    for fn in fs.functions:
+        if fn.name and fn.name != target:
+            extras.append(fn.name)
+    for cls in fs.classes:
+        if cls.name and cls.name != target:
+            extras.append(cls.name)
+    return extras
+
 
 def _try_tldr_snippet_parse(snippet: str, ext: str) -> list[str]:
     """Try to parse a snippet with tldr structure via a temp file."""

@@ -2,6 +2,18 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.4.1 — 2026-04-23
+
+### Fixed
+- **`fast_edit(replace='ClassName', ...)` no longer spuriously rejects field-only class snippets.** The safety guard that blocks multi-symbol `replace=` snippets (to prevent silent deletion of nested methods) now uses `tldr structure`'s per-definition `kind` classification: methods and functions count as extras, field/variable/constant declarations do not. Previously the guard couldn't distinguish `private int size = 100;` from `public void set(...)`, so any `replace=ClassName` snippet containing a full class body with only a field change was rejected even though the edit was a safe direct swap. tldr is already a fastedit prerequisite (used by `fast_read`, `fast_search`, `fast_references`), so this inherits accurate per-language extraction across all 13 supported languages at ~10 ms per call. Falls back to the in-process AST analyzer if tldr is temporarily unavailable. Closes the `test_batch_edit_mixed_preserve_siblings` regression that had been carried in the backlog.
+- **Signature-presence check now recognizes Java / C# / TypeScript access modifiers.** The internal helper that decides whether to auto-preserve a function/class signature (omitted signature → prepend from AST) only knew Rust's `pub` and TypeScript's `export`. `public class Cache { ... }`, `private static final class Foo { ... }`, and similar snippets were classified as "signature missing" and got their declaration prepended a second time, producing duplicated lines once the guard above stopped blocking them. The helper now accepts any sequence of modifier keywords before `class` / `struct` / `interface` / `trait` / `enum` / `impl`, and skips comment-prefixed lines (`//`, `#`, `*`, `--`) to avoid false positives from declarations referenced inside doc comments.
+
+### Changed
+- **`fastedit doctor` now reports the tldr version** (`tldr /path/to/tldr (v0.1.4)`) and treats tldr as a required dependency rather than optional, reflecting its role in the edit guard, `fast_read`, and `fast_search`. Missing-tldr now produces a failing row (exit code 1) instead of a skip.
+
+### Tests
+- **7-case regression lock for the field-vs-method guard invariant** across Python, Java, Rust, and TypeScript. Field-only class snippets pass silently; method-containing snippets raise `ValueError` with the same `additional symbol(s)` message as before. Locks both halves of the invariant so future changes to the guard can't regress one in favor of the other.
+
 ## 0.4.0 — 2026-04-23
 
 ### Added

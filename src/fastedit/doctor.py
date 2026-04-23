@@ -13,6 +13,7 @@ import importlib.metadata
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -180,14 +181,24 @@ def _check_mcp_config(r: Report) -> None:
 
 def _check_tldr(r: Report) -> None:
     path = shutil.which("tldr")
-    if path:
-        r.add("tldr (optional)", OK, path)
-    else:
+    if not path:
         r.add(
-            "tldr (optional)",
-            SKIP,
-            "not on PATH — only needed for `fastedit read` / `fastedit search`",
+            "tldr",
+            FAIL,
+            "not on PATH — required for fast_read / fast_search / fast_edit guard",
+            required=True,
         )
+        return
+    version = "unknown"
+    try:
+        out = subprocess.run(
+            [path, "--version"], capture_output=True, text=True, timeout=3,
+        )
+        if out.returncode == 0 and out.stdout.strip():
+            version = out.stdout.strip().split()[-1]
+    except (subprocess.TimeoutExpired, OSError):
+        pass
+    r.add("tldr", OK, f"{path} (v{version})")
 
 
 def run_doctor() -> int:

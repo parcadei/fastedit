@@ -10,6 +10,8 @@ Works across all 16 languages supported by tldr.
 
 from __future__ import annotations
 
+import re
+
 # --- Re-export all public types and functions for backward compatibility ---
 # All existing `from .inference.chunked_merge import X` imports continue to work.
 from .ast_utils import (  # noqa: F401
@@ -41,6 +43,7 @@ from .snippet_analysis import (  # noqa: F401
     _MARKER_RE,
     _extract_identifiers,
     _extract_snippet_names,
+    _top_level_extras,
     _find_import_region,
     _find_insertion_region,
     _find_matching_nodes,
@@ -83,10 +86,28 @@ def _snippet_has_target_signature(snippet: str, target_name: str) -> bool:
     A match requires both the definition keyword AND the captured name
     equalling ``target_name`` — otherwise a snippet that references another
     `def` in a comment or docstring would spuriously match.
+
+    Falls back to a broader class-keyword check that tolerates language
+    modifiers the shared regex does not enumerate (Java/C#/TS ``public``,
+    ``private``, ``final``, etc.). Comment-prefixed lines are skipped to
+    avoid false positives.
     """
     for line in snippet.splitlines():
+        stripped = line.lstrip()
+        is_comment = (
+            stripped.startswith("//") or stripped.startswith("#")
+            or stripped.startswith("*") or stripped.startswith("--")
+        )
         for pattern in _DEFINITION_PATTERNS:
             m = pattern.search(line)
+            if m and m.group(1) == target_name:
+                return True
+        if not is_comment:
+            m = re.search(
+                r"\b(?:class|struct|enum|trait|interface|protocol|"
+                r"module|object|impl)\s+(\w+)",
+                line,
+            )
             if m and m.group(1) == target_name:
                 return True
     return False
@@ -512,8 +533,7 @@ def chunked_merge(
     # If you want to replace X AND add Y, use fast_batch_edit with two
     # entries: {replace: 'X', ...} and {after: 'X', snippet: 'def Y...'}.
     if replace:
-        snippet_names = _extract_snippet_names(snippet, language)
-        extras = [n for n in snippet_names if n != replace]
+        extras = _top_level_extras(snippet, language, replace)
         if extras:
             raise ValueError(
                 f"replace='{replace}' snippet defines additional symbol(s) "
