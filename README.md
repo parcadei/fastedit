@@ -82,7 +82,13 @@ fastedit pull --model mlx-8bit    # Apple Silicon
 fastedit pull --model bf16        # Linux / GPU
 ```
 
-The CLI lands at `~/.local/bin/fastedit`. Upgrade later with `uv tool upgrade fastedits`.
+The CLI lands at `~/.local/bin/fastedit`. Upgrade later with:
+
+```bash
+uv tool upgrade --refresh fastedits
+```
+
+The `--refresh` flag bypasses uv's 10-minute package-index cache. Without it, `uv tool upgrade` can report "Nothing to upgrade" even when a newer release is live on PyPI — the cache hasn't rechecked yet. `--refresh` is also useful right after a `uv publish` when PyPI's CDN may not have fully propagated.
 
 Drop the `mcp` extra if you only want the CLI. Drop `mlx` / `vllm` if you only want to point at an external LLM server.
 
