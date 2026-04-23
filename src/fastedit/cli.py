@@ -472,11 +472,15 @@ def cmd_move(args):
 
 
 def cmd_rename(args):
-    """Rename all occurrences of a symbol in a file using word-boundary regex."""
+    """Rename all AST-verified references to a symbol in a single file.
+
+    Drives matching through ``tldr references <name> <file> --scope file``,
+    mirroring fast_rename_all's AST-verified behaviour. Substrings inside
+    strings, comments, and docstrings are not renamed.
+    """
     import difflib
 
-    from .data_gen.ast_analyzer import detect_language
-    from .inference.rename import do_rename
+    from .inference.rename import do_rename_ast
     from .mcp.backup import BackupStore, _atomic_write
 
     path = Path(args.file)
@@ -485,14 +489,14 @@ def cmd_rename(args):
         sys.exit(1)
 
     original = path.read_text(encoding="utf-8")
-    language = detect_language(path)
 
-    renamed, count, skipped = do_rename(original, args.old_name, args.new_name, language)
+    renamed, count, skipped = do_rename_ast(path, args.old_name, args.new_name)
 
     if count == 0:
         print(
-            f"Error: no code occurrences of '{args.old_name}' found in {args.file} "
-            f"(word-boundary, excluding strings/comments).",
+            f"Error: no code references to '{args.old_name}' found in {args.file} "
+            f"(AST-verified via tldr references --scope file; matches inside "
+            f"strings/comments/docstrings are not counted).",
             file=sys.stderr,
         )
         sys.exit(1)

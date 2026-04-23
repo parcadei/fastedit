@@ -198,8 +198,17 @@ def _extract_json_object(text: str) -> str:
     return ""
 
 
-def _run_tldr_references(old_name: str, root: "Path") -> dict:
+def _run_tldr_references(
+    old_name: str, root: "Path", scope: str = "workspace",
+) -> dict:
     """Invoke `tldr references` and return the parsed JSON payload.
+
+    Args:
+        old_name: Symbol to look up.
+        root: Path to pass to tldr (directory for scope='workspace',
+            single file for scope='file').
+        scope: tldr's --scope flag. 'workspace' for cross-file rename,
+            'file' for single-file rename.
 
     Returns an empty payload ({"references": []}) on any failure — tldr
     missing, timeout, non-zero exit, or unparseable output. The rename then
@@ -211,6 +220,7 @@ def _run_tldr_references(old_name: str, root: "Path") -> dict:
     cmd = [
         "tldr", "references", old_name, str(root),
         "--format", "json",
+        "--scope", scope,
         "--min-confidence", "0.9",
         "--limit", "10000",
     ]
@@ -436,3 +446,75 @@ def do_cross_file_rename(
         skipped = max(0, raw_hits - count)
         plan[original_path] = (new_content, count, skipped)
     return plan
+
+
+def do_rename_ast(
+    file_path,
+    old_name: str,
+    new_name: str,
+) -> tuple[str, int, int]:
+    """Rename all AST-verified references to old_name in a single file.
+
+    Drives matching through ``tldr references <name> <file> --scope file``,
+    which uses tree-sitter + language-aware name resolution to distinguish
+    real code references from coincidental substrings in strings, comments,
+    and docstrings. This replaces the previous regex + tree-sitter skip-zone
+    engine (``do_rename``) for the single-file code path.
+
+    Behaviour when tldr is unavailable or emits no references: returns the
+    original content unchanged with count=0 and skipped=0. Callers treat
+    count==0 as "no matches" and surface it to the user.
+
+    Args:
+        file_path: Path (or str) to a single file.
+        old_name: Symbol name to find.
+        new_name: Replacement name.
+
+    Returns:
+        (new_content, replacement_count, skipped_count).
+
+        skipped_count is the number of raw word-boundary occurrences that
+        tldr did *not* verify as a real reference (i.e., substrings inside
+        strings, comments, or docstrings). Computed client-side because
+        ``tldr references`` does not carry a per-file skip count.
+    """
+    from pathlib import Path
+
+    path = Path(file_path)
+
+    if old_name == new_name:
+        try:
+            original = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return "", 0, 0
+        return original, 0, 0
+
+    try:
+        original = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return "", 0, 0
+
+    data = _run_tldr_references(old_name, path, scope="file")
+
+    # With --scope file, every reference in the payload belongs to `path`,
+    # but we still filter defensively by kind in case tldr returns noisy
+    # substring hits below the confidence threshold we didn't catch.
+    refs: list[dict] = []
+    for ref in data.get("references") or []:
+        kind = ref.get("kind")
+        if kind not in _REFERENCE_KINDS_TO_RENAME:
+            continue
+        refs.append(ref)
+
+    new_content, count = _apply_refs_to_content(
+        original, refs, old_name, new_name,
+    )
+
+    # skipped = raw word-boundary hits not verified as references. Mirrors
+    # the semantics exposed by do_cross_file_rename so callers get a
+    # consistent "N matches in strings/comments were skipped" signal.
+    word_pattern = re.compile(r"\b" + re.escape(old_name) + r"\b")
+    raw_hits = len(word_pattern.findall(original))
+    skipped = max(0, raw_hits - count)
+
+    return new_content, count, skipped

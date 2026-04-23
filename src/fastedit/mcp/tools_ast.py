@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ..data_gen.ast_analyzer import detect_language
 from ..inference.chunked_merge import delete_symbol, move_symbol
-from ..inference.rename import do_rename
+from ..inference.rename import do_rename_ast
 from .server import _atomic_write, mcp
 
 
@@ -111,16 +111,21 @@ async def fast_move(file_path: str, symbol: str, after: str) -> str:
 
 @mcp.tool(
     description=(
-        "Rename all occurrences of a symbol in a file. Uses word-boundary matching "
-        "to rename functions, variables, classes, or parameters without affecting "
-        "partial matches (renaming 'get' won't touch 'get_all'). Instant, no model."
+        "Rename all AST-verified references to a symbol in a single file. "
+        "Drives matching through `tldr references --scope file`, so the rename "
+        "skips substrings inside strings, comments, and docstrings and never "
+        "touches partial matches (renaming 'get' won't touch 'get_all'). "
+        "Use fast_rename_all for cross-file renames. Instant, no model."
     ),
 )
 async def fast_rename(file_path: str, old_name: str, new_name: str) -> str:
-    """Rename all occurrences of a symbol in a file using word-boundary regex.
+    """Rename all AST-verified references to a symbol in a single file.
 
-    Uses tree-sitter to skip matches inside strings, comments, and docstrings.
-    Falls back to plain regex if the language isn't supported by tree-sitter.
+    Drives matching through ``tldr references <name> <file> --scope file``,
+    so only real code references are renamed — substrings inside strings,
+    comments, and docstrings are skipped. When tldr is unavailable the call
+    becomes a no-op (count=0) rather than falling back to regex, matching
+    the safety stance of fast_rename_all.
     """
     ctx = mcp.get_context()
     lc = ctx.request_context.lifespan_context
@@ -133,14 +138,14 @@ async def fast_rename(file_path: str, old_name: str, new_name: str) -> str:
 
     async with file_locks[file_path]:
         original = path.read_text(encoding="utf-8")
-        language = detect_language(path)
 
-        renamed, count, skipped = do_rename(original, old_name, new_name, language)
+        renamed, count, skipped = do_rename_ast(path, old_name, new_name)
 
         if count == 0:
             return (
-                f"Error: no code occurrences of '{old_name}' found in {file_path} "
-                f"(word-boundary match, excluding strings/comments)."
+                f"Error: no code references to '{old_name}' found in {file_path} "
+                f"(AST-verified via tldr references --scope file; matches inside "
+                f"strings/comments/docstrings are not counted)."
             )
 
         _atomic_write(path, renamed, backups=backups)
