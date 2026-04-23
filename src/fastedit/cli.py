@@ -725,6 +725,19 @@ def main():
     pull_p.add_argument("--model", required=True, choices=["mlx-8bit", "bf16"],
                         help="Model to download. Use mlx-8bit on Apple Silicon (MLX), bf16 on Linux GPU (vLLM).")
 
+    # doctor (diagnostics)
+    sub.add_parser("doctor", help="Run self-diagnostic and report install health")
+
+    # mcp-install (write Claude Code MCP config)
+    mcp_install_p = sub.add_parser(
+        "mcp-install",
+        help="Install the fastedit MCP entry in Claude Code config",
+    )
+    mcp_install_p.add_argument(
+        "--scope", choices=["user", "project"], default="user",
+        help="Where to write the entry (default: user = ~/.claude.json)",
+    )
+
     args = parser.parse_args()
 
     if args.command == "read":
@@ -749,6 +762,12 @@ def main():
         cmd_undo(args)
     elif args.command == "pull":
         cmd_pull(args)
+    elif args.command == "doctor":
+        from .doctor import run_doctor
+        sys.exit(run_doctor())
+    elif args.command == "mcp-install":
+        from .mcp_install import install_mcp_config
+        sys.exit(install_mcp_config(args.scope))
     else:
         parser.print_help()
 

@@ -1,6 +1,6 @@
 [project]
 name = "fastedits"
-version = "0.2.9"
+version = "0.3.0"
 description = "AST-aware code editing — 45% fewer output tokens than unified diffs"
 requires-python = ">=3.11"
 license = {text = "MIT"}

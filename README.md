@@ -149,7 +149,18 @@ fastedit diff src/app.py
 
 FastEdit runs as an MCP server for AI agents (Claude Code, Cursor, etc.). If you installed with the `mcp` extra above, the server binary is already on PATH as `fastedit-mcp`.
 
-Add to Claude Code config (`~/.claude.json` or project `.mcp.json`):
+### One-liner setup
+
+```bash
+fastedit mcp-install                  # writes ~/.claude.json (user scope)
+fastedit mcp-install --scope project  # writes ./.mcp.json (project scope)
+```
+
+Idempotent — safe to re-run. Backs up existing config before modifying.
+
+### Manual setup
+
+Or add the entry to `~/.claude.json` / project `.mcp.json` by hand:
 ```json
 {
   "mcpServers": {
@@ -164,6 +175,14 @@ Add to Claude Code config (`~/.claude.json` or project `.mcp.json`):
 No hardcoded python paths, no `-m` invocation. Works wherever `fastedit` is on PATH.
 
 10 tools: `fast_edit`, `fast_batch_edit`, `fast_multi_edit`, `fast_read`, `fast_search`, `fast_diff`, `fast_delete`, `fast_move`, `fast_rename`, `fast_undo`
+
+### Diagnosing issues
+
+```bash
+fastedit doctor
+```
+
+Checks binaries, Python version, backend extras, model cache state, MCP config sanity, and tldr. Run this first when anything breaks.
 
 ### Auto-redirect Edit → fast_edit (optional)
 

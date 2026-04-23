@@ -2,6 +2,12 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.3.0 — 2026-04-23
+
+### Added
+- **`fastedit doctor`** — self-diagnostic that reports install health at a glance. Checks the three binaries on PATH (`fastedit`, `fastedit-mcp`, `fastedit-hook`), Python version, installed package version, optional backend extras (`mlx`, `vllm`, `fastmcp`), model cache (path, size, actual `.safetensors` presence, honors `FASTEDIT_MODEL_PATH`), Claude Code MCP config sanity (both `~/.claude.json` and `$(pwd)/.mcp.json`, with stale-path detection), and tldr availability. Prints per-section rows with ✓/!/✗/– markers and exits non-zero if any required check fails. Use as the first diagnostic when anything goes wrong — most common install issues (wrong extras, missing weights, stale MCP config) are now visible in one command.
+- **`fastedit mcp-install`** — writes the fastedit entry into Claude Code's MCP config in one command. Defaults to `--scope user` (`~/.claude.json`); pass `--scope project` to write `$(pwd)/.mcp.json`. Idempotent: detects an existing matching entry and exits. Safe on upgrades: if a stale entry exists (e.g. hardcoded venv path from an older install), the old entry is printed, the config is backed up with a timestamped `.bak-*` suffix, and the entry is replaced with `{"command": "fastedit-mcp", "type": "stdio"}`. Warns but still writes if `fastedit-mcp` isn't on PATH yet.
+
 ## 0.2.9 — 2026-04-23
 
 ### Added
