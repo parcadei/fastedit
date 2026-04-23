@@ -2,6 +2,11 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.2] — 2026-04-23
+
+### Fixed
+- **Silent signature corruption in `replace=` fast path** — `fast_edit` with `replace=<name>` no longer silently corrupts the file when the snippet omits the function signature. FastEdit now auto-prepends the signature from the AST when it's missing from the snippet — matching the design intent of `replace=` as a structural targeting kwarg. Previously the deterministic fast path treated a body-only snippet as the full new body, wiping the `def`/`fn`/`func` line and reporting success anyway. Scoped to function/method/class-like kinds; constants and other value-like targets keep their full-replacement semantics. Regression covered by `tests/test_replace_without_signature.py` (Python + Rust, happy path, top-marker variant).
+
 ## [0.2.1] — 2026-04-22
 
 ### Fixed
@@ -26,6 +31,7 @@ All notable changes to FastEdit are documented in this file. Format: [Keep a Cha
 ## [0.1.0]
 Initial release.
 
+[0.2.2]: https://github.com/parcadei/fastedit/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/parcadei/fastedit/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/parcadei/fastedit/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/parcadei/fastedit/releases/tag/v0.1.0
