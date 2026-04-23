@@ -356,6 +356,14 @@ def chunked_merge(
             "describes only a subset of the class's members."
         )
 
+    # Normalize short / Unicode marker forms (v0.2.4) → canonical long
+    # form. All downstream code (chunk_locator, text_match, model paths,
+    # snippet_analysis) continues to see ``# ... existing code ...`` /
+    # ``// ... existing code ...``; no other module needs to know about
+    # the short forms. See ``_normalize_markers`` docstring.
+    from .text_match import _normalize_markers
+    snippet = _normalize_markers(snippet)
+
     if preserve_siblings and replace:
         return _merge_preserve_siblings(
             original_code=original_code,

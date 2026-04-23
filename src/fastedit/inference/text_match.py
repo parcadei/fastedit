@@ -17,10 +17,89 @@ when a large gap would be dropped without a marker (likely missing marker).
 from __future__ import annotations
 
 import logging
+import re
 
 _log = logging.getLogger("fastedit.text_match")
 
 _MARKER_PHRASES = ("... existing code ...", "// ...", "# ...")
+
+# Canonical long-form markers the rest of the pipeline understands.
+_CANONICAL_HASH_MARKER = "# ... existing code ..."
+_CANONICAL_SLASH_MARKER = "// ... existing code ..."
+
+# Short-form markers (v0.2.4): recognized by ``_normalize_markers`` and
+# rewritten to the canonical long form before any downstream processing.
+#
+# Detection (stripped line):
+#   - Exact: ``#...``, ``//...``, ``…`` (Unicode ellipsis U+2026)
+#   - Legacy long forms still match via substring in ``_is_marker``.
+#   - Generic regex catches spacing variants (e.g. ``# ...``, ``// ..``).
+#
+# The rule is intentionally permissive on the short side — a lone
+# ``#...`` on a line is vanishingly unlikely to be real code.
+_SHORT_HASH_RE = re.compile(r"^\s*#\s*\.\.\.\s*$")
+_SHORT_SLASH_RE = re.compile(r"^\s*//\s*\.\.\.\s*$")
+_UNICODE_ELLIPSIS_RE = re.compile(r"^\s*…\s*$")
+
+
+def _normalize_markers(snippet: str) -> str:
+    """Rewrite short/Unicode marker forms to the canonical long form.
+
+    Accepts (per line, after leading-whitespace strip):
+
+      * ``#...``              → ``# ... existing code ...``
+      * ``//...``             → ``// ... existing code ...``
+      * ``…`` (U+2026)    → ``# ... existing code ...`` (hash form;
+        the substring is recognized by ``_is_marker`` regardless of
+        language, so one canonical form suffices)
+
+    Legacy long-form markers (``# ... existing code ...``,
+    ``// ... existing code ...``) are passed through unchanged.
+
+    Indentation is preserved on the rewritten line so downstream indent
+    arithmetic in ``deterministic_edit`` (which uses marker snippet
+    indent to infer gap-body indent deltas) continues to match the
+    surrounding snippet lines.
+
+    This is a pure string transform — no parsing, no I/O, no side
+    effects. Safe to call on any input.
+    """
+    lines = snippet.splitlines(keepends=True)
+    out: list[str] = []
+    for raw in lines:
+        # Separate the line body from its terminator so we can rewrite
+        # the body without losing ``\n`` / ``\r\n``.
+        if raw.endswith("\r\n"):
+            body, term = raw[:-2], "\r\n"
+        elif raw.endswith("\n"):
+            body, term = raw[:-1], "\n"
+        else:
+            body, term = raw, ""
+
+        indent_len = len(body) - len(body.lstrip())
+        indent = body[:indent_len]
+        stripped = body[indent_len:].rstrip()
+
+        if stripped == "#...":
+            out.append(indent + _CANONICAL_HASH_MARKER + term)
+        elif stripped == "//...":
+            out.append(indent + _CANONICAL_SLASH_MARKER + term)
+        elif stripped == "…":
+            out.append(indent + _CANONICAL_HASH_MARKER + term)
+        elif _SHORT_HASH_RE.match(body) and "existing" not in body:
+            # Covers spacing variants like ``# ...`` / ``#  ...`` that
+            # aren't full legacy long-form markers. ``_is_marker``
+            # already accepts these via substring match, but normalizing
+            # here keeps the two code paths consistent and makes the
+            # position-semantics check below simpler.
+            out.append(indent + _CANONICAL_HASH_MARKER + term)
+        elif _SHORT_SLASH_RE.match(body) and "existing" not in body:
+            out.append(indent + _CANONICAL_SLASH_MARKER + term)
+        elif _UNICODE_ELLIPSIS_RE.match(body):
+            out.append(indent + _CANONICAL_HASH_MARKER + term)
+        else:
+            out.append(raw)
+    return "".join(out)
 
 # Lines that are too ambiguous to use as context anchors — they match
 # too many positions and cause false anchors (e.g., closing braces).
