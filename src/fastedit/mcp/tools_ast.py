@@ -177,6 +177,7 @@ async def fast_rename_all(
     old_name: str,
     new_name: str,
     dry_run: bool = False,
+    kind_filter: str | None = None,
 ) -> str:
     """Rename all occurrences of a symbol across a directory tree."""
     from ..inference.rename import do_cross_file_rename
@@ -190,7 +191,9 @@ async def fast_rename_all(
     if not root.is_dir():
         return f"Error: directory not found: {root_dir}"
 
-    plan = do_cross_file_rename(root, old_name, new_name)
+    plan = do_cross_file_rename(
+        root, old_name, new_name, kind_filter=kind_filter,
+    )
     if not plan:
         return (
             f"No occurrences of '{old_name}' found under {root_dir} "

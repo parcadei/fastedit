@@ -524,7 +524,10 @@ def cmd_rename_all(args):
         print(f"Error: directory not found: {args.root}", file=sys.stderr)
         sys.exit(1)
 
-    plan = do_cross_file_rename(root, args.old_name, args.new_name)
+    plan = do_cross_file_rename(
+        root, args.old_name, args.new_name,
+        kind_filter=getattr(args, "only", None),
+    )
     if not plan:
         print(
             f"No occurrences of '{args.old_name}' found under {args.root} "
@@ -771,6 +774,11 @@ def main():
     ra_p.add_argument(
         "--dry-run", action="store_true",
         help="Preview which files would change without writing",
+    )
+    ra_p.add_argument(
+        "--only", choices=["class", "function", "method", "variable"], default=None,
+        help="Restrict rename to targets whose definition kind matches "
+             "(uses tldr for AST-verified lookup).",
     )
 
     # --- undo (no model) ---
