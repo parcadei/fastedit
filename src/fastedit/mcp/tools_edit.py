@@ -185,8 +185,36 @@ async def fast_edit(
             )
 
         _atomic_write(path, result.merged_code, backups=backups)
+
+        # VAL-M3-001: pre-flight impact note. When replace=<name> and
+        # the signature line actually changed, surface the cross-file
+        # caller count so the user knows callers may break. Hot-path
+        # discipline (VAL-M3-002): the helper short-circuits on matching
+        # signatures without invoking tldr. Swallow any exception so an
+        # infra hiccup can't fail a successful edit.
+        impact_suffix = ""
+        if replace:
+            try:
+                from ..inference.caller_safety import (
+                    _find_project_root,
+                    compute_signature_impact_note,
+                )
+                project_root = _find_project_root(path)
+                note = compute_signature_impact_note(
+                    old_code=original_code,
+                    new_code=result.merged_code,
+                    symbol=replace,
+                    language=language,
+                    file_path=path,
+                    project_root=project_root,
+                )
+                if note:
+                    impact_suffix = "\n" + note
+            except Exception:
+                impact_suffix = ""
+
         return await _maybe_append_update_notice(
-            f"Applied edit to {file_path}. {metrics}"
+            f"Applied edit to {file_path}. {metrics}{impact_suffix}"
         )
 
 

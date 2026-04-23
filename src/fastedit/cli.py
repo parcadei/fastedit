@@ -223,6 +223,10 @@ def _try_deterministic_replace(path, original_code, original_lines, snippet, rep
 def cmd_edit(args):
     """Apply an edit snippet to a file using the FastEdit model."""
     from .data_gen.ast_analyzer import detect_language
+    from .inference.caller_safety import (
+        _find_project_root,
+        compute_signature_impact_note,
+    )
     from .inference.chunked_merge import chunked_merge
     from .mcp.backup import BackupStore, _atomic_write
 
@@ -240,13 +244,44 @@ def cmd_edit(args):
     replace_sym = args.replace or None
     after_sym = args.after or None
 
+    def _maybe_impact_note(merged_code: str) -> str:
+        """Build the pre-flight impact note (VAL-M3-001) or empty str.
+
+        Informational only — the edit has already landed on disk by the
+        time we call this. When ``replace=`` isn't used or the signature
+        is unchanged the helper returns ``None`` without invoking
+        ``tldr`` (VAL-M3-002 hot path). We swallow any exception so
+        infra hiccups can't break the edit-success print.
+        """
+        if not replace_sym:
+            return ""
+        try:
+            project_root = _find_project_root(path)
+            note = compute_signature_impact_note(
+                old_code=original_code,
+                new_code=merged_code,
+                symbol=replace_sym,
+                language=language,
+                file_path=path,
+                project_root=project_root,
+            )
+        except Exception:
+            return ""
+        if not note:
+            return ""
+        return "\n" + note
+
     if replace_sym and not after_sym:
         result = _try_deterministic_replace(
             path, original_code, original_lines, snippet, replace_sym, language, backups,
         )
         if result is not None:
             _atomic_write(path, result.merged_code, backups=backups)
-            print(f"Applied edit to {args.file}. latency: 0ms, 0 tok/s, 0 tokens")
+            note = _maybe_impact_note(result.merged_code)
+            print(
+                f"Applied edit to {args.file}. "
+                f"latency: 0ms, 0 tok/s, 0 tokens{note}"
+            )
             return
 
     # Lazy backend: only loaded when merge_fn is actually called.
@@ -293,7 +328,8 @@ def cmd_edit(args):
     elif language and not result.parse_valid:
         print(f"Warning: merged output has parse errors. Wrote anyway. {metrics}")
     else:
-        print(f"Applied edit to {args.file}. {metrics}")
+        note = _maybe_impact_note(result.merged_code)
+        print(f"Applied edit to {args.file}. {metrics}{note}")
 
 
 def cmd_batch_edit(args):
