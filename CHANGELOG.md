@@ -2,6 +2,18 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## 0.3.2 — 2026-04-23
+
+### Fixed
+- **Hook supported-extension list stays synced with the AST parser.** Thanks to [@chapayevdauren](https://github.com/chapayevdauren) (PR [#1](https://github.com/parcadei/fastedit/pull/1)) for the refactor: the hook now imports `EXTENSION_TO_LANGUAGE` directly from `fastedit.data_gen.ast_analyzer` with a hardcoded fallback for edge cases. This eliminates three silent drift bugs we'd shipped in 0.2.7 — `.mjs` and `.cjs` were in the hook's allow-list but not in the parser (edits redirected to `fast_edit`, which then errored); `.hxx` same; `.hh` was in the parser but not in the hook (silently missed the redirect). Single source of truth now.
+- **Dotfiles and extensionless files fall through to built-in Edit.** `Makefile`, `Dockerfile`, `.env`, `.bashrc`, `.gitignore`, `README` — `Path.suffix` is empty for any name that starts with a dot or has no dot at all, so under the 0.3.0 logic (`if ext and ext not in SUPPORTED: fall_through`) they hit the empty-`ext` short-circuit and got blocked by the default deny path. Flagged by CodeRabbit on PR #1. Condition is now `if file_path and ext not in SUPPORTED: fall_through`, which treats any file without a recognized code extension as "not ours" — correct for every real non-code file type.
+
+### Changed
+- **Narrowed the hook's fallback `except Exception` to `except ImportError`**, also per CodeRabbit review. If `ast_analyzer` ever has a real bug (SyntaxError, NameError) we want it to surface, not be silently masked by the hardcoded fallback.
+
+### Tests
+- **First test suite in the repo.** `tests/test_hook.py` covers all 23 supported extensions (blocked with redirect), 11 common unsupported extensions (fall through silently), 6 dotfile / extensionless names (fall through), uppercase extensions, and missing `file_path`. 34 cases total, all passing. Contributed by Dauren, extended here for the dotfile regression.
+
 ## 0.3.1 — 2026-04-23
 
 ### Added

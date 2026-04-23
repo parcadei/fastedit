@@ -53,6 +53,19 @@ def test_unsupported_extensions_fall_through(ext):
     assert result.returncode == 0
     assert result.stdout == ""
 
+@pytest.mark.parametrize(
+    "file_name",
+    [".env", ".bashrc", ".gitignore", "Makefile", "Dockerfile", "README"],
+)
+def test_dotfiles_and_extensionless_fall_through(file_name):
+    """Path.suffix is empty for leading-dot names and names without a '.',
+    so these paths must still fall through to built-in Edit."""
+    result = run_hook({"tool_input": {"file_path": f"/tmp/{file_name}",
+                                      "old_string": "a",
+                                      "new_string": "b"}})
+    assert result.returncode == 0
+    assert result.stdout == ""
+
 
 def test_uppercase_extension_still_matches():
     result = run_hook({"tool_input": {"file_path": "/tmp/example.PY"}})
