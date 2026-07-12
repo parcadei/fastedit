@@ -280,7 +280,30 @@
     "Repair unrelated repository-wide Ruff findings",
     "Publish, deploy, tag, or open a pull request"
   ],
-  "risks": [],
+  "risks": [
+    {
+      "id": "RISK-001",
+      "kind": "operational",
+      "description": "A cardinality- or set-based hotfix could accept a correct intended line while also permitting an unrelated deletion, duplicate, or reordering.",
+      "probability": "high",
+      "impact": "high",
+      "mitigation": "VAL-001",
+      "status": "open",
+      "finding_severity": "warn",
+      "routing": "add_assertion"
+    },
+    {
+      "id": "RISK-002",
+      "kind": "integration",
+      "description": "Pre-existing optional-MLX test failures and repository-wide lint debt could obscure whether the patch introduces a new regression.",
+      "probability": "medium",
+      "impact": "medium",
+      "mitigation": "VAL-001",
+      "status": "open",
+      "finding_severity": "warn",
+      "routing": "add_risk"
+    }
+  ],
   "decisions_log": [],
   "environment": {
     "branch": "autonomous/fix-hallucination-validator",
