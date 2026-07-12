@@ -346,6 +346,23 @@
       "orca_terminal_handle": "term_a6a403a5-342a-4850-8846-f0a94a0fa556",
       "orca_dispatch_status": "completed"
     },
+    "fix_transports": [
+      {
+        "attempt": "ATT-002",
+        "worker": "W-002",
+        "kind": "orca_supervised_dispatch",
+        "agent": "opencode",
+        "model": "minimax-coding-plan/MiniMax-M3",
+        "report_path": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-002.json",
+        "worktree_id": "db7813d2-cc8f-4711-91b9-747ef137e8c2::/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+        "worktree_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+        "worktree_branch": "parcadei/fastedit-hallucination-worker-w001",
+        "orca_task_id": "task_44e8ad0a5ab9",
+        "orca_dispatch_id": "ctx_ba335cda62cd",
+        "orca_terminal_handle": "term_a6a403a5-342a-4850-8846-f0a94a0fa556",
+        "orca_dispatch_status": "dispatched"
+      }
+    ],
     "attempt_validations": [
       {
         "attempt": "ATT-001",
