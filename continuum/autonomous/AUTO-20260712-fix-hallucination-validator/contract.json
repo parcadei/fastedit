@@ -340,7 +340,11 @@
       "worktree_id": "db7813d2-cc8f-4711-91b9-747ef137e8c2::/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
       "worktree_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
       "worktree_branch": "parcadei/fastedit-hallucination-worker-w001",
-      "worktree_verified": true
+      "worktree_verified": true,
+      "orca_task_id": "task_273cb7b949ec",
+      "orca_dispatch_id": "ctx_6eb54bff41bb",
+      "orca_terminal_handle": "term_a6a403a5-342a-4850-8846-f0a94a0fa556",
+      "orca_dispatch_status": "dispatched"
     },
     "prepared_checks": {
       "focused": "uv run --with pytest python -m pytest -q <worker-selected regression test>",
