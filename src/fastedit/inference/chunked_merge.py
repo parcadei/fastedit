@@ -120,58 +120,143 @@ def _check_hallucinations(
 ) -> float:
     """Score merge quality: 1.0 = clean, lower = hallucinated.
 
-    Combines two signals:
-    - Anchor preservation: did the model keep lines it wasn't asked to change?
-    - Invention rate: did the model add lines that exist in neither original nor snippet?
+    A merge is faithful iff the *multiset* and *order* of lines in
+    ``merged_chunk`` match what ``snippet`` declared, modulo the lines
+    from ``original_chunk`` that the snippet implicitly allowed to be
+    replaced:
 
-    Returns a score where <0.85 typically indicates hallucination.
+      * every snippet line that matches an unused original line in
+        forward order is a *preserved* (context) line — those originals
+        must appear in ``merged_chunk`` with the same relative order and
+        multiplicity;
+      * every snippet line that does *not* match an unused original is
+        *new* — it must appear in ``merged_chunk`` at least as many
+        times as the snippet declares;
+      * every original line that was *not* matched by the forward scan
+        is in the *replacement span* — its disappearance is only legal
+        if the replacement span introduces the snippet's new content;
+      * nothing else may appear in ``merged_chunk`` (no inventions, no
+        marker leakage).
+
+    ``original_chunk`` and ``merged_chunk`` are the chunk before and
+    after the model's edit; ``snippet`` is the user-declared intent.
+    Returns ``1.0`` for a clean merge and ``0.0`` for any violation
+    (multiplicity drift, order drift, invention, or marker leak).
     """
-    orig_lines = original_chunk.splitlines()
-    merged_lines = merged_chunk.splitlines()
-    snippet_lines = snippet.splitlines()
 
-    # Non-marker snippet lines = the intended changes
-    snippet_code: set[str] = set()
-    for sl in snippet_lines:
-        s = sl.strip()
-        if s and not _is_marker_line(sl):
-            snippet_code.add(s)
+    def _real_lines(s: str) -> list[str]:
+        """Stripped, non-blank, non-marker lines — the lines that carry
+        real content for the diff."""
+        return [
+            ln.strip()
+            for ln in s.splitlines()
+            if ln.strip() and not _is_marker_line(ln)
+        ]
 
-    orig_set = {line.strip() for line in orig_lines if line.strip()}
+    orig_list = _real_lines(original_chunk)
+    merged_list = _real_lines(merged_chunk)
+    snippet_list = _real_lines(snippet)
 
-    # Anchor lines: original lines NOT in the snippet's change set
-    anchors: list[str] = []
-    for ol in orig_lines:
-        s = ol.strip()
-        if not s:
-            continue
-        if s in snippet_code:
-            continue
-        anchors.append(s)
+    # Marker leak guard: if the model echoed any snippet placeholder into
+    # the merge output, the merge did not actually run — it just passed
+    # the snippet through. ``_real_lines`` strips markers before the
+    # multiset comparison so a leaked marker would otherwise be silent.
+    # Scan the raw merged chunk and reject on first hit.
+    for raw_line in merged_chunk.splitlines():
+        if raw_line.strip() and _is_marker_line(raw_line):
+            return 0.0
 
-    if not anchors:
-        return 1.0
+    # Forward-scan classify the snippet lines:
+    #   * "preserved" — matches an as-yet-unconsumed original line in
+    #     order (context anchor the merge must keep);
+    #   * "new"       — does not match anywhere from the cursor forward
+    #     (new content the merge must introduce).
+    # The cursor never rewinds, so duplicates in the original are
+    # resolved left-to-right and a snippet line that re-uses an earlier
+    # anchor is treated as new (the second ``A`` in a snippet that lists
+    # ``A, X, A`` is new, not a request to delete the second original
+    # ``A``).
+    expected_preserved: list[str] = []
+    expected_new: list[str] = []
+    cursor = 0
+    for sl in snippet_list:
+        match_idx = None
+        for i in range(cursor, len(orig_list)):
+            if orig_list[i] == sl:
+                match_idx = i
+                break
+        if match_idx is not None:
+            expected_preserved.append(orig_list[match_idx])
+            cursor = match_idx + 1
+        else:
+            expected_new.append(sl)
 
-    merged_set = {line.strip() for line in merged_lines}
-    survived = sum(1 for a in anchors if a in merged_set)
-    anchor_score = survived / len(anchors)
+    # The replacement span is whatever the forward scan did *not* match.
+    # We walk ``orig_list`` and consume it in step with
+    # ``expected_preserved`` so duplicate originals are accounted for
+    # correctly (the second ``A`` is preserved iff the snippet consumes
+    # the second ``A`` from the original).
+    expected_replaced: list[str] = []
+    p_idx = 0
+    for ol in orig_list:
+        if p_idx < len(expected_preserved) and expected_preserved[p_idx] == ol:
+            p_idx += 1
+        else:
+            expected_replaced.append(ol)
 
-    # Invention penalty: lines in output that don't come from original or snippet
-    merged_real = [line.strip() for line in merged_lines if line.strip()]
-    if merged_real:
-        invented = sum(1 for m in merged_real if m not in orig_set and m not in snippet_code)
-        invention_rate = invented / len(merged_real)
-    else:
-        invention_rate = 0.0
+    # Expected merged multiset = original multiset minus the replacement
+    # span plus the new content. Counter handles multiplicity; sets
+    # would silently collapse duplicate originals (the very issue the
+    # forward-scan step is meant to prevent).
+    from collections import Counter
+    expected_merged_counter: Counter[str] = (
+        Counter(orig_list) - Counter(expected_replaced) + Counter(expected_new)
+    )
+    merged_counter = Counter(merged_list)
 
-    # Marker leak: if the model left "... existing code ..." in output,
-    # it didn't actually merge — it echoed the snippet placeholders
-    marker_leak = sum(1 for m in merged_real if _is_marker_line(m))
-    if marker_leak > 0:
-        return max(0.0, anchor_score - invention_rate - 0.3)
+    # Multiplicity check covers four regressions at once:
+    #   * missing required snippet code → counter underflows on a new line;
+    #   * invented output              → counter overflows on a non-line;
+    #   * unsupported duplicates        → counter overflows on an
+    #                                     existing line;
+    #   * unrelated deletion            → counter underflows on an
+    #                                     original line the snippet
+    #                                     never declared replaceable.
+    if merged_counter != expected_merged_counter:
+        return 0.0
 
-    # Combined: anchor preservation minus invention penalty
-    return max(0.0, anchor_score - invention_rate)
+    # Order check: the preserved lines must appear in ``merged_list`` in
+    # the same relative order they appeared in ``orig_list``. A swap of
+    # two context lines is multiplicity-correct but order-corrupt, so it
+    # fails here even though the multiset check above would pass.
+    if not _order_preserved(expected_preserved, merged_list):
+        return 0.0
+
+    return 1.0
+
+
+def _order_preserved(
+    expected_preserved: list[str],
+    merged_list: list[str],
+) -> bool:
+    """True iff every line in ``expected_preserved`` appears in
+    ``merged_list`` in the same relative order.
+
+    Walk ``merged_list`` with a single cursor; for each preserved line
+    in order, advance the cursor until we either find that line or run
+    out of input. Duplicates are consumed one at a time, so an
+    ``[A, A]`` expected sequence matches a ``[A, X, A]`` merged list
+    but not an ``[A, A]`` swapped into ``[A, A]`` with the wrong
+    second-A position (caught at the cursor-advance step).
+    """
+    cursor = 0
+    for line in expected_preserved:
+        while cursor < len(merged_list) and merged_list[cursor] != line:
+            cursor += 1
+        if cursor >= len(merged_list):
+            return False
+        cursor += 1
+    return True
 
 
 # ---------------------------------------------------------------------------
