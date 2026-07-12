@@ -1,0 +1,133 @@
+{
+  "role": "implement",
+  "profile": {
+    "id": "code_patch",
+    "version": "v4",
+    "dod_profile": "patch",
+    "active_axis_gates": [
+      "regression-first",
+      "library-property-validation",
+      "changed-file-lint",
+      "no-public-api-change"
+    ]
+  },
+  "work_item": {
+    "id": "WI-001",
+    "assertion": "VAL-001",
+    "stage": "running",
+    "depends": []
+  },
+  "assertion": {
+    "id": "VAL-001",
+    "type": "property",
+    "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
+    "severity": "blocker",
+    "evidence_required": {
+      "class": "property_execution",
+      "profile": "validator-regression-matrix"
+    }
+  },
+  "context": {
+    "conventions_delta": "Read and follow CLAUDE.md. Implement a general solution, never a Python-only or exact-reproduction special case. Write the failing regression oracle before implementation and run Ruff on changed files before committing.",
+    "structure": "tldr structure: _check_hallucinations is src/fastedit/inference/chunked_merge.py:116-174; chunked_merge calls it in the model fallback around lines 833 and 842. The helper currently normalizes to stripped global sets, excludes every snippet line from anchors, and loses order/multiplicity.",
+    "environment": {
+      "branch_base": "autonomous/fix-hallucination-validator at ce425c6",
+      "package_manager": "uv 0.7.17",
+      "runtimes": {
+        "python": "uv-managed Python 3.12.8"
+      },
+      "services": {},
+      "baseline": "864 passed, 24 skipped, 4 unrelated optional-MLX failures; 39 unrelated repository-wide Ruff findings"
+    },
+    "interfaces": [
+      {
+        "kind": "function",
+        "name": "_check_hallucinations",
+        "compatibility": "backward-compatible"
+      }
+    ],
+    "prior_report": null,
+    "issue": {
+      "url": "https://github.com/parcadei/fastedit/issues/3",
+      "confirmed_reproduction": "The exact correct merge scores 0.0, triggers two model calls, rejects one chunk, and leaves the original unchanged.",
+      "unsafe_suggestion": "Do not use the issue proposal len(lost_anchors) <= len(snippet_new); it accepts additive edits that drop unrelated lines, one-to-many replacements that also drop a bystander, and duplicate output."
+    },
+    "implementation_guidance": [
+      "Make validation aware of ordered replacement correspondence or an equivalently sound edit explanation; global set/cardinality compensation is insufficient.",
+      "Preserve line order and multiplicity in validation.",
+      "Require intended new snippet code to land and reject unsupported output lines and leaked markers.",
+      "Allow only original lines that can be tied to the intended replacement to disappear; unrelated original lines must remain.",
+      "Reuse existing generic helpers or standard-library machinery where appropriate; add no dependency.",
+      "Keep the private helper signature stable unless a signature change is strictly necessary and escalated."
+    ],
+    "required_regressions": [
+      "Exact issue #3 faithful one-line return replacement is accepted.",
+      "The faithful edit plus an unrelated deleted line is rejected.",
+      "A one-to-many intended replacement plus an unrelated bystander deletion is rejected.",
+      "An additive edit that drops an unrelated original line is rejected.",
+      "Duplicate supported lines are rejected when multiplicity is not intended.",
+      "Reordered preserved lines are rejected.",
+      "Missing required snippet code is rejected.",
+      "Invented output is rejected.",
+      "Marker leakage is rejected.",
+      "Repeated identical original lines are handled by multiplicity rather than collapsed into a set."
+    ]
+  },
+  "bounds": {
+    "files": [
+      "src/fastedit/inference/chunked_merge.py",
+      "tests/test_hallucination_validation.py"
+    ],
+    "worktree": {
+      "required": true,
+      "expected_branch": "parcadei/fastedit-hallucination-worker-w001",
+      "expected_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "verified": true
+    },
+    "test_command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py",
+    "tdd": true,
+    "commit_after": true,
+    "forbidden": [
+      "dependency additions or lockfile changes",
+      "public API changes",
+      "tldr or tree-sitter changes",
+      "unrelated baseline test or Ruff cleanup",
+      "editing continuum/autonomous or contract.json in the worker worktree",
+      "publishing, pushing, tagging, deploying, or opening a pull request"
+    ]
+  },
+  "authority": {
+    "autonomy_level": "execute_with_gates",
+    "deploy_authorized": false
+  },
+  "output": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-001.json",
+  "report_requirements": {
+    "identity": {
+      "id": "REP-W-001",
+      "worker": "W-001",
+      "task": "AUTO-20260712-fix-hallucination-validator",
+      "work_item": "WI-001",
+      "assertion": "VAL-001"
+    },
+    "required_fields": [
+      "worker_result",
+      "implemented",
+      "remaining",
+      "blocked_reason",
+      "design_decision",
+      "alternatives_considered",
+      "minimalism_descent",
+      "tests",
+      "checks",
+      "files_changed",
+      "out_of_bounds",
+      "interfaces_changed",
+      "generated_artifacts",
+      "corrections",
+      "discoveries",
+      "issues",
+      "conventions"
+    ],
+    "outside_worktree_rule": "This report path is the sole permitted write outside the isolated checkout. Write it before sending worker_done."
+  }
+}
