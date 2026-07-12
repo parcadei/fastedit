@@ -1,0 +1,366 @@
+{
+  "id": "AUTO-20260712-fix-hallucination-validator",
+  "task": "Fix FastEdit issue #3 without weakening hallucination rejection",
+  "profile_id": "code_patch",
+  "profile_tier": "canonical",
+  "profile_version": "v4",
+  "profile_origin": "cached",
+  "profile_basis_version": "autonomous.axes/4.0",
+  "profile_axes": {
+    "surface": [
+      "library"
+    ],
+    "state": "none",
+    "actors": [
+      "developer",
+      "machine"
+    ],
+    "scale": "local",
+    "complexity": "routine",
+    "safety_criticality": "none",
+    "data_sensitivity": "public",
+    "regulatory_domain": [],
+    "novelty": "precedented",
+    "volatility": "low",
+    "platform": [
+      "none"
+    ],
+    "aesthetic_usability": "none",
+    "appetite": "standard",
+    "dependency": "bounded",
+    "codebase_context": "brownfield_modify"
+  },
+  "profile_resolution": {
+    "front_door": "predicate",
+    "matched_predicate": "code_patch@canonical/v4",
+    "intent_layer": "requirements",
+    "technical_assertions": [],
+    "axis_rationale": {
+      "surface": "The change is confined to a private Python library validator used by the merge pipeline.",
+      "state": "No persistent data, configuration, or schema changes are involved.",
+      "actors": "Developers invoke FastEdit and machine-generated merge output is validated deterministically.",
+      "scale": "The behavior is a local pure-function and merge-pipeline correction.",
+      "complexity": "The defect and acceptance boundary are reproducible with a focused regression matrix.",
+      "safety_criticality": "A false decision can drop an edit but does not cross an essential-service or life-safety boundary.",
+      "data_sensitivity": "The repository and test fixtures are public source code.",
+      "regulatory_domain": "No regulated domain is implicated.",
+      "novelty": "This is a precedented bug fix in an existing deterministic validator.",
+      "volatility": "The issue statement, source behavior, and requested outcome are stable.",
+      "platform": "No browser, server, cloud, app-store, chain, or embedded platform behavior changes.",
+      "aesthetic_usability": "No visual or usability surface exists.",
+      "appetite": "The user requested a production-quality scoped fix.",
+      "dependency": "Existing Python and tree-sitter dependencies remain bounded and unchanged.",
+      "codebase_context": "The patch modifies an established brownfield implementation and its tests."
+    },
+    "cca": {
+      "status": "passed",
+      "impossible_pairs": [],
+      "uncertain_pairs": []
+    },
+    "selector_precedence_version": "autonomous.pi/4.0",
+    "axis_gate_map": {
+      "surface": [
+        "focused library behavioral and property tests",
+        "no public API gate because the helper is private"
+      ],
+      "state": [
+        "no migration or recovery gate"
+      ],
+      "actors": [
+        "model-free validation oracle for machine output"
+      ],
+      "scale": [
+        "local execution evidence"
+      ],
+      "complexity": [
+        "single implementation work item and TASK validation boundary"
+      ],
+      "safety_criticality": [
+        "execute_with_gates authority"
+      ],
+      "data_sensitivity": [
+        "no privacy or retention gate"
+      ],
+      "regulatory_domain": [
+        "no compliance gate"
+      ],
+      "novelty": [
+        "regression oracle before implementation"
+      ],
+      "volatility": [
+        "refresh task branch and validator context before dispatch"
+      ],
+      "platform": [
+        "no platform release adapter"
+      ],
+      "aesthetic_usability": [
+        "no design review gate"
+      ],
+      "appetite": [
+        "bounded patch budget"
+      ],
+      "dependency": [
+        "no dependency additions"
+      ],
+      "codebase_context": [
+        "CLAUDE.md conventions, baseline tests, and baseline lint captured"
+      ]
+    },
+    "verification": {
+      "consistent": true,
+      "monotone_depth": true,
+      "intentions_covered": true,
+      "self_explaining": true
+    },
+    "leak_id": null
+  },
+  "process_shape": "sequential",
+  "contract_state": "planned",
+  "release_policy": "none",
+  "skill_schema_version": "4.4",
+  "refs_loaded": [
+    {
+      "id": "task-modes",
+      "version": "4.4",
+      "source": "/Users/cosimo/.codex/skills/autonomous/refs/task-modes.md",
+      "verified_on": "2026-07-11"
+    },
+    {
+      "id": "authority",
+      "version": "4.4",
+      "source": "/Users/cosimo/.codex/skills/autonomous/refs/authority.md",
+      "verified_on": "2026-07-11"
+    },
+    {
+      "id": "contract-schema",
+      "version": "4.4",
+      "source": "/Users/cosimo/.codex/skills/autonomous/refs/contract-schema.md",
+      "verified_on": "2026-07-11"
+    },
+    {
+      "id": "evidence-ladder",
+      "version": "4.4",
+      "source": "/Users/cosimo/.codex/skills/autonomous/refs/evidence-ladder.md",
+      "verified_on": "2026-07-11"
+    },
+    {
+      "id": "reports",
+      "version": "4.1",
+      "source": "/Users/cosimo/.codex/skills/autonomous/refs/reports.md",
+      "verified_on": "2026-07-10"
+    },
+    {
+      "id": "orchestration",
+      "version": "local-2026-07-12",
+      "source": "/Users/cosimo/.agents/skills/orchestration/SKILL.md",
+      "verified_on": "2026-07-12"
+    },
+    {
+      "id": "orchestration-watcher",
+      "version": "local-2026-07-12",
+      "source": "/Users/cosimo/.agents/skills/orchestration/references/watcher.md",
+      "verified_on": "2026-07-12"
+    }
+  ],
+  "dod_snapshot": {
+    "profile": "patch",
+    "source": "task-modes.md section dod v4.4, 2026-07-11; baseline-aware concretization",
+    "items": [
+      "defect reproduced before implementation",
+      "correct line-replacement merge passes the hard-rejection threshold",
+      "unrelated deletion, missing required snippet code, duplication, reordering, invention, and marker leak remain rejected",
+      "focused regression tests pass",
+      "reachable non-MLX suite passes and full-suite baseline failures do not increase",
+      "changed files pass Ruff",
+      "no dependency, public API, tldr, or deployment changes",
+      "validation responsibility remains with the Codex coordinator"
+    ]
+  },
+  "authority": {
+    "autonomy_level": "execute_with_gates",
+    "approval_preference": "irreversible_only",
+    "deploy_authorized": false,
+    "deploy_authorization_source": null,
+    "user_approval_required_for": [
+      "destructive_changes",
+      "dependency_additions",
+      "schema_migrations",
+      "public_api_changes",
+      "security_sensitive_changes",
+      "deployment"
+    ],
+    "forbidden": [
+      "changing secrets",
+      "modifying production configuration",
+      "deleting user data",
+      "publishing or deploying without explicit authorization"
+    ],
+    "escalation_policy": {
+      "ambiguity": "ask",
+      "risk_high": "ask",
+      "validation_exhausted": "ask",
+      "cost_overrun": "ask"
+    }
+  },
+  "budget": {
+    "max_parallel": {
+      "default": 1,
+      "applies_when": "EXECUTE found one file-and-semantic implementation seam",
+      "override_point": "project.autonomous.profiles.code_patch.max_parallel",
+      "source": "EXECUTE independent-seam analysis under task-modes.md v4.4, 2026-07-11"
+    },
+    "max_fix_rounds": {
+      "default": 2,
+      "applies_when": "blocking patch validation",
+      "override_point": "project.autonomous.profiles.code_patch.max_fix_rounds",
+      "source": "task-modes.md policy-defaults v4.4, 2026-07-11"
+    },
+    "total_cost_ceiling": {
+      "default": {
+        "unit": "token_equivalent",
+        "limit": 120000
+      },
+      "applies_when": "all worker, validation, fix, and EVOLVE activity in this scoped run",
+      "override_point": "project.autonomous.profiles.code_patch.total_cost_ceiling",
+      "source": "coordinator bounded estimate for one implementation worker plus two possible fix rounds, 2026-07-12"
+    }
+  },
+  "width_source": "derived-from-seams",
+  "readiness_baseline": {
+    "status": "baseline_unavailable",
+    "reason": "No readiness.sh exists in the repository. Direct capability checks found git, uv, Python, tldr, pytest, Ruff, and Orca; no deploy adapter was detected.",
+    "dimensions": {
+      "tests": "864 passed, 24 skipped, and 4 pre-existing optional-MLX CLI failures under uv run --with pytest python -m pytest -q",
+      "lint": "39 pre-existing Ruff findings under uv run --with ruff ruff check .",
+      "types": "no repository type-check command declared",
+      "security": "not activated for this private pure-function patch",
+      "docs": "README and CLAUDE.md present",
+      "observability": "not applicable to a local library validator"
+    }
+  },
+  "knowledge": {
+    "known": [
+      "The exact issue #3 helper reproduction scores a correct merge as 0.0.",
+      "A model-free pipeline reproduction calls a perfect merge function twice, rejects the chunk, and returns the original file unchanged.",
+      "The current validator uses stripped global sets, so it loses order and multiplicity and cannot identify the intended replacement span.",
+      "The issue's proposed lost-anchor/new-line cardinality shortcut accepts unrelated deletions and duplicate output.",
+      "The repository baseline is clean in git; baseline test and Ruff debt are recorded separately from this patch."
+    ],
+    "assumptions": [
+      {
+        "id": "ASM-001",
+        "text": "A correct fix can remain internal to the validator and focused tests without changing public function signatures or dependencies.",
+        "confidence": 0.8,
+        "validation": "Worker implementation report, diff review, and focused/full test execution",
+        "status": "open",
+        "source": "source inspection and issue #3 reproduction"
+      }
+    ],
+    "unknowns": [
+      "The smallest implementation that preserves order, multiplicity, and unrelated-line protection will be selected by the isolated implementation worker."
+    ]
+  },
+  "requirements": [
+    {
+      "id": "REQ-001",
+      "text": "FastEdit must accept faithful line-replacing model merges without weakening rejection of corrupted merges.",
+      "source": "user",
+      "type": "functional",
+      "status": "open",
+      "assertions": [
+        "VAL-001"
+      ]
+    }
+  ],
+  "non_goals": [
+    "Modify tldr or tree-sitter behavior",
+    "Change FastEdit's public API",
+    "Add or upgrade dependencies",
+    "Repair unrelated baseline CLI optional-MLX failures",
+    "Repair unrelated repository-wide Ruff findings",
+    "Publish, deploy, tag, or open a pull request"
+  ],
+  "risks": [],
+  "decisions_log": [],
+  "environment": {
+    "branch": "autonomous/fix-hallucination-validator",
+    "base_commit": "c193761bfa14670384f4be05bdcb4700113700bc",
+    "git_clean": true,
+    "package_manager": "uv 0.7.17",
+    "runtimes": {
+      "python": "3.12.8 in uv project environment",
+      "system_python": "3.14.6"
+    },
+    "services": {},
+    "conventions": "CLAUDE.md: general solutions only, tests before implementation, follow existing patterns, run lint before commit.",
+    "constraints": [
+      "Editing worker must use an Orca-created isolated worktree.",
+      "Worker must use MiniMax-M3 through OpenCode as explicitly interpreted from the requested Luna Max worker.",
+      "Worker may write only REP-W-001.json outside its worktree.",
+      "Orchestrator owns contract, integration, validation, release record, and ledger state."
+    ],
+    "structure": "tldr structure identifies _check_hallucinations at src/fastedit/inference/chunked_merge.py:116-174 and chunked_merge at lines 412-889.",
+    "capability_gaps": [
+      "No readiness.sh",
+      "No installed Luna-named Orca agent; MiniMax-M3 is available through OpenCode and selected as the matching worker provider.",
+      "The unqualified uv run pytest command selects global pytest; validation must use uv run --with pytest python -m pytest."
+    ]
+  },
+  "assertions": [
+    {
+      "id": "VAL-001",
+      "type": "property",
+      "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
+      "milestone": null,
+      "scope": "pre_merge",
+      "status": "pending",
+      "validation_result": null,
+      "validation_reason": null,
+      "depends": [],
+      "severity": "blocker",
+      "failure_policy": "fix",
+      "not_applicable": null,
+      "evidence_required": {
+        "class": "property_execution",
+        "profile": "validator-regression-matrix"
+      },
+      "traces": {
+        "artifacts": [],
+        "code_refs": [],
+        "test_refs": [],
+        "decisions": []
+      }
+    }
+  ],
+  "work_items": [
+    {
+      "id": "WI-001",
+      "assertion": "VAL-001",
+      "role": "implement",
+      "stage": "planned",
+      "depends": [],
+      "attempts": [],
+      "report": {
+        "schema": "reports.md section worker-report v4.1",
+        "path_pattern": "reports/REP-{worker-id}.json"
+      }
+    }
+  ],
+  "interfaces": [
+    {
+      "kind": "function",
+      "name": "_check_hallucinations",
+      "producer": "src/fastedit/inference/chunked_merge.py",
+      "consumers": [
+        "chunked_merge model fallback",
+        "focused regression tests"
+      ],
+      "compatibility": "backward-compatible",
+      "contract_assertions": [
+        "VAL-001"
+      ]
+    }
+  ],
+  "artifacts": [],
+  "external_dependencies": []
+}
