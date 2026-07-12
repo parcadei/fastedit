@@ -1,0 +1,48 @@
+{
+  "schema_version": "autonomous-ledger/v1",
+  "updated_at": "2026-07-12T18:50:09Z",
+  "tasks": [
+    {
+      "id": "AUTO-20260712-fix-hallucination-validator",
+      "status": "validated",
+      "profile_id": "code_patch",
+      "process_shape": "sequential",
+      "ledger_delta": "AUTO-20260712-fix-hallucination-validator/ledger_delta.json",
+      "validation": "AUTO-20260712-fix-hallucination-validator/validation/TASK.json",
+      "release": "AUTO-20260712-fix-hallucination-validator/release/NONE.json",
+      "assertions": {
+        "passed": 1,
+        "failed": 0,
+        "undecidable": 0
+      },
+      "completed_at": "2026-07-12T18:50:09Z"
+    }
+  ],
+  "knowledge": [
+    {
+      "finding": "Marker-aware merge validation requires occurrence, multiplicity, local deletion justification, and marker-relative side ordering.",
+      "source": "AUTO-20260712-fix-hallucination-validator/validation/TASK.json"
+    },
+    {
+      "finding": "Positive deterministic parity must be paired with negative relation-breaking transformations.",
+      "source": "AUTO-20260712-fix-hallucination-validator/ledger_delta.json"
+    }
+  ],
+  "debt": {
+    "open": [
+      {
+        "id": "DEBT-001",
+        "location": "autonomous worker-report prompt templates",
+        "strategic_flag": true
+      }
+    ],
+    "paid": [
+      {
+        "id": "DEBT-VAL-001",
+        "location": "src/fastedit/inference/chunked_merge.py:_check_hallucinations"
+      }
+    ]
+  },
+  "taxonomy_leaks": [],
+  "profile_promotion_candidates": []
+}

@@ -1,0 +1,119 @@
+{
+  "evolve_outcome": "changed",
+  "second_story": {
+    "question": "Given the contract, context, tools, and authority, why did the failed candidates look correct to their workers?",
+    "answer": "The early worker prompts validated the reported counterexample and broad set/count properties but did not begin with a bidirectional semantic matrix derived from text_match's marker contract. Each candidate therefore satisfied the currently visible oracle while dropping another relation: marker preservation, insertion-versus-replacement, or the new-line side relative to preserved survivors. The final prompt made that missing relation executable before implementation and the orchestrator added an independent exhaustive oracle plus a real-model differential.",
+    "evidence": [
+      "reports/REP-W-001.json",
+      "reports/REP-W-002.json",
+      "reports/REP-W-003.json",
+      "reports/REP-W-004.json",
+      "worker-prompts/W-004.json",
+      "validation/TASK.json"
+    ]
+  },
+  "failure_review": {
+    "timeline": [
+      "ATT-001 replaced sets with occurrence checks but stripped marker semantics and was rejected by four independent counterexamples.",
+      "ATT-002 synthesized one expected output and fixed those cases, but forced before-marker insertions to consume preserved originals; independent deterministic_edit parity rejected it.",
+      "ATT-003 switched to invariant validation and restored preservation/insertion parity, but allowed new lines to cross marker-preserved survivors; three independent wrong-side cases rejected it.",
+      "The automatic depth gate stopped the run; DEC-001 recorded the user's authorization for one additional Claude Opus round.",
+      "ATT-004 added occurrence-aware marker-side ordering, passed focused/full/differential/exhaustive checks, and was integrated.",
+      "Post-integration validation used the cached FastEdit 1.7B MLX model: the same perfect output scored 0.0 under legacy logic and 1.0 under the integrated validator."
+    ],
+    "impact": "No rejected candidate reached the task branch product code. The cost was three extra recovery rounds and delayed integration; user data and external systems were unaffected.",
+    "expected": "One general validator should accept faithful replacement/insertion outcomes while rejecting unsupported deletion, insertion, duplication, reordering, marker leakage, and wrong-side marker placement.",
+    "observed": "Each of the first three candidates closed the preceding hole but omitted another marker relationship that its test matrix did not encode.",
+    "evidence": [
+      "contract.json environment.attempt_validations",
+      "validation/TASK.json",
+      "reports/REP-W-001.json",
+      "reports/REP-W-002.json",
+      "reports/REP-W-003.json",
+      "reports/REP-W-004.json"
+    ],
+    "contributing_factors": [
+      "The initial regression matrix was organized by corruption category, not by the full marker-position semantic cross-product.",
+      "The W-002 prompt suggested an exact-output synthesizer even though marker fallback can admit multiple locally valid outcomes.",
+      "Faithful deterministic_edit parity proved acceptance but did not prove rejection of lines moved across the marker-covered gap.",
+      "Worker prompt report-schema summaries omitted several canonical v4.1 identity and structured-row requirements, producing malformed but non-authoritative reports."
+    ],
+    "containment_recovery": "All workers edited one isolated Orca worktree. The orchestrator independently rejected each faulty candidate, committed reports unchanged, stopped at the depth gate, obtained DEC-001, added missing negative oracles, validated the final net diff, and only then cherry-picked the worker commits.",
+    "orchestrator_artifact_change": "worker-prompts/W-004.json made before-marker/after-marker side ordering, repeated-occurrence handling, mutation evidence, and the three corrupt outputs mandatory. validation/TASK.json now records exhaustive and real-model differential checks in addition to worker tests.",
+    "follow_ups": [
+      "Future validator prompts should copy the full canonical worker-report v4.1 schema instead of a shortened field-type summary.",
+      "When deterministic semantics are the reference, require both positive parity and negative relation-breaking variants for every marker position.",
+      "Keep the cached-model tokenizer regex advisory separate from this validator patch; investigate only in a dedicated model-runtime task."
+    ]
+  },
+  "knowledge_added": [
+    {
+      "finding": "Marker preservation must be validated as a relation among declared new occurrences, surviving original occurrences, and marker side—not as sets, counts, or one mandatory output.",
+      "destination": "enforcement",
+      "landed": true
+    },
+    {
+      "finding": "A faithful-output parity suite needs paired negative transforms; otherwise it proves recall without proving corruption rejection.",
+      "destination": "enforcement",
+      "landed": true
+    },
+    {
+      "finding": "Real local-model differential evidence distinguishes validator correctness from assumptions about what the model emits.",
+      "destination": "claude_md",
+      "landed": false
+    }
+  ],
+  "new_enforcement": [
+    {
+      "assertion": "VAL-001",
+      "rule": "occurrence-aware marker semantic regression matrix with wrong-side mutations",
+      "tier": "test",
+      "approved": true,
+      "worker": "W-004"
+    }
+  ],
+  "claude_md_updates": [],
+  "adrs_added": [],
+  "debt_added": [
+    {
+      "id": "DEBT-001",
+      "location": "autonomous worker-report prompt templates",
+      "quadrant": "process-correctness",
+      "principal": "Copy the complete canonical v4.1 worker-report grammar into future prompts or validate it before dispatch.",
+      "interest": "REP-W-004 required independent evidence because its structure was malformed.",
+      "blast_radius": "future autonomous evidence ingestion",
+      "strategic_flag": true
+    }
+  ],
+  "debt_paid": [
+    {
+      "id": "DEBT-VAL-001",
+      "location": "src/fastedit/inference/chunked_merge.py:_check_hallucinations",
+      "quadrant": "correctness",
+      "principal": "Replace stripped global-set scoring with occurrence-aware marker semantics.",
+      "interest": "Correct local-model replacement edits were retried and then silently rejected.",
+      "blast_radius": "chunked model fallback edits",
+      "strategic_flag": true
+    }
+  ],
+  "action_class_promotion_delta": [],
+  "taxonomy_leaks": [],
+  "profile_promotion_candidates": [],
+  "calibration_samples": [
+    {
+      "subject": "VAL-001",
+      "worker_success_reports": 2,
+      "independent_product_acceptances": 1,
+      "blocking_candidate_rejections": 3,
+      "lesson": "Worker success is not validation; semantic counterexamples must be independently generated."
+    }
+  ],
+  "readiness_delta": {
+    "tests": "improved: 38 validator regressions added; focused total 119 passed; full passing count increased from 864 to 902 with the same four optional-MLX failures and 24 skips",
+    "types": "unchanged: no repository type-check command declared",
+    "security": "unchanged: pure internal validator patch",
+    "docs": "unchanged: no user-facing API or usage change",
+    "observability": "unchanged: local library helper",
+    "baseline_status": "baseline_unavailable because readiness.sh is absent"
+  }
+}
