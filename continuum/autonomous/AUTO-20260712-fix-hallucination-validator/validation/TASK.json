@@ -1,12 +1,19 @@
 {
   "subject": "TASK",
-  "result": "failed",
+  "result": "passed",
   "automated": [
     {
-      "check": "focused validator and marker-semantics suites",
+      "check": "focused validator and text-match suites",
       "command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py tests/test_text_match.py",
       "exit_code": 0,
-      "observed": "111 passed in 0.08s"
+      "observed": "119 passed after integration"
+    },
+    {
+      "check": "full repository suite with baseline attribution",
+      "command": "uv run --with pytest python -m pytest -q",
+      "exit_code": 1,
+      "observed": "902 passed, 24 skipped, 4 failed; the failure identities exactly match the pre-task optional-MLX CLI baseline and no new failure appeared",
+      "baseline_match": true
     },
     {
       "check": "changed-file lint",
@@ -15,55 +22,75 @@
       "observed": "All checks passed"
     },
     {
-      "check": "diff integrity",
-      "command": "git diff --check e79df43..0039c6d",
+      "check": "task diff integrity",
+      "command": "git diff --check c193761bfa14670384f4be05bdcb4700113700bc..HEAD",
       "exit_code": 0,
-      "observed": "No whitespace errors"
+      "observed": "No whitespace or conflict-marker errors"
     },
     {
-      "check": "independent wrong-side marker oracle",
-      "command": "uv run python <inline assertions for before-marker, after-marker, and identity-free wrong-side placements>",
-      "exit_code": 1,
-      "observed": "The first corrupt case failed its rejection assertion: after-marker code moved before the preserved q=2 gap scored 1.0. A non-asserting replay also showed 1.0 for the symmetric before-marker assignment case and an identity-free bare-call case."
+      "check": "wrong-side marker oracle",
+      "command": "direct _check_hallucinations calls for after-marker-before-gap, before-marker-after-gap, and identity-free wrong-side variants",
+      "exit_code": 0,
+      "observed": "All three corrupt variants scored 0.0; the exact issue #3 faithful merge scored 1.0"
+    },
+    {
+      "check": "independent exhaustive local oracle",
+      "command": "uv run python <independent 1,364-case insertion/replacement/deletion/duplicate/invention enumerator>",
+      "exit_code": 0,
+      "observed": "1,364 cases checked with zero mismatches across identity-free before/after marker, assignment-key mismatch, and unique shared-key replacement semantics"
+    },
+    {
+      "check": "real local FastEdit model issue reproduction",
+      "command": "uv run --extra mlx python <candidate chunked_merge reproduction using ~/.cache/fastedit/models/mlx-8bit>",
+      "exit_code": 0,
+      "observed": "The local FastEdit 1.7B model produced the correct greet replacement in one call; legacy score 0.0, candidate score 1.0, chunks_rejected 0, edit applied"
     }
   ],
   "assertion_results": [
     {
       "id": "VAL-001",
-      "status": "blocked",
-      "validation_result": "failed",
-      "validation_reason": "ATT-003 accepts snippet-new lines moved to the wrong side of marker-preserved originals, violating the declared reorder rejection and deterministic_edit marker-position semantics. Both automatic fix rounds are consumed, so no authorized retry remains in this contract.",
-      "evidence_artifacts": []
+      "status": "passed",
+      "validation_result": "passed",
+      "validation_reason": "The integrated validator accepts the exact faithful replacement from issue #3 and the real local-model output while rejecting unrelated deletion, omission, duplication, invention, preserved/new reordering, marker leakage, marker-key mismatch, and wrong-side marker placement by occurrence and multiplicity.",
+      "evidence_artifacts": [
+        "ART-001",
+        "ART-002"
+      ]
     }
   ],
-  "evidence_gaps": [
-    "The regression matrix proves faithful deterministic_edit outputs are accepted but lacks negative cases that move inserted lines across marker-preserved gaps."
-  ],
+  "evidence_gaps": [],
   "review_findings": [
     {
-      "severity": "blocking",
-      "description": "Marker-relative placement is not enforced: new-before-marker and new-after-marker lines may cross the preserved gap and still score 1.0.",
-      "evidence": "Independent direct calls against worker commit 0039c6d; three corrupt wrong-side variants each returned 1.0."
+      "severity": "non-blocking",
+      "description": "REP-W-004 does not conform fully to the canonical v4.1 worker-report schema; product acceptance is based on independent executable evidence and exact commit inspection.",
+      "evidence": "contract.environment.attempt_validations ATT-004"
+    },
+    {
+      "severity": "non-blocking",
+      "description": "mlx-lm emits a tokenizer regex advisory for the cached model, but the issue reproduction generated the intended parse-valid output.",
+      "evidence": "contract.environment.local_model_validation"
     }
   ],
-  "fix_rounds_used": 2,
+  "fix_rounds_used": 3,
   "rollback": null,
   "contract_updates": [
     {
       "assertion": "VAL-001",
       "from": "running",
-      "to": "blocked"
+      "to": "passed"
     },
     {
-      "work_item": "WI-001",
-      "from": "running",
-      "to": "blocked"
+      "requirement": "REQ-001",
+      "from": "open",
+      "to": "covered"
+    },
+    {
+      "contract_state": "executing",
+      "to": "validating"
     }
   ],
-  "non_convergence": {
-    "root_cause_class": "marker-semantics drift",
-    "automatic_fix_round_limit": 2,
-    "exit": "escalate",
-    "reason": "Three successive candidates fixed the preceding counterexample but omitted another part of marker semantics; the code_patch profile has one work item, so the harden valve cannot open automatically."
+  "anti_gaming": {
+    "method": "regression-first counterexamples plus mutation guard plus independent exhaustive oracle plus real-model differential",
+    "observation": "Each recovery oracle was shown failing on its predecessor; disabling the final side-order guard reintroduced six failures; independent enumeration found zero mismatches; the same real model output scored 0.0 under legacy logic and 1.0 under the candidate."
   }
 }

@@ -115,7 +115,7 @@
     "leak_id": null
   },
   "process_shape": "sequential",
-  "contract_state": "executing",
+  "contract_state": "validating",
   "release_policy": "none",
   "skill_schema_version": "4.4",
   "refs_loaded": [
@@ -253,7 +253,7 @@
         "text": "A correct fix can remain internal to the validator and focused tests without changing public function signatures or dependencies.",
         "confidence": 0.8,
         "validation": "Worker implementation report, diff review, and focused/full test execution",
-        "status": "open",
+        "status": "validated",
         "source": "source inspection and issue #3 reproduction"
       }
     ],
@@ -267,7 +267,7 @@
       "text": "FastEdit must accept faithful line-replacing model merges without weakening rejection of corrupted merges.",
       "source": "user",
       "type": "functional",
-      "status": "open",
+      "status": "covered",
       "assertions": [
         "VAL-001"
       ]
@@ -289,7 +289,7 @@
       "probability": "high",
       "impact": "high",
       "mitigation": "VAL-001",
-      "status": "realized",
+      "status": "mitigated",
       "finding_severity": "warn",
       "routing": "add_assertion"
     },
@@ -300,7 +300,7 @@
       "probability": "medium",
       "impact": "medium",
       "mitigation": "VAL-001",
-      "status": "open",
+      "status": "mitigated",
       "finding_severity": "warn",
       "routing": "add_risk"
     },
@@ -311,7 +311,7 @@
       "probability": "high",
       "impact": "high",
       "mitigation": "VAL-001",
-      "status": "realized",
+      "status": "mitigated",
       "finding_severity": "blocker",
       "routing": "add_assertion"
     }
@@ -519,9 +519,9 @@
       "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
       "milestone": null,
       "scope": "pre_merge",
-      "status": "running",
-      "validation_result": null,
-      "validation_reason": "DEC-001 authorized ATT-004. Revalidation must add and pass negative before-marker/after-marker side-placement oracles before this assertion can pass.",
+      "status": "passed",
+      "validation_result": "passed",
+      "validation_reason": "Post-integration validation passed: 119 focused tests; exact full-suite baseline match; changed-file Ruff and diff integrity; three wrong-side marker counterexamples rejected; 1,364 independent local oracle cases with zero mismatches; and the real cached FastEdit 1.7B model applied issue #3 in one call with legacy score 0.0 versus candidate score 1.0.",
       "depends": [],
       "severity": "blocker",
       "failure_policy": "fix",
@@ -531,10 +531,20 @@
         "profile": "validator-regression-matrix"
       },
       "traces": {
-        "artifacts": [],
-        "code_refs": [],
-        "test_refs": [],
-        "decisions": []
+        "artifacts": [
+          "ART-001",
+          "ART-002"
+        ],
+        "code_refs": [
+          "src/fastedit/inference/chunked_merge.py:_check_hallucinations"
+        ],
+        "test_refs": [
+          "tests/test_hallucination_validation.py",
+          "validation/TASK.json"
+        ],
+        "decisions": [
+          "DEC-001"
+        ]
       }
     }
   ],
@@ -600,6 +610,25 @@
       ]
     }
   ],
-  "artifacts": [],
+  "artifacts": [
+    {
+      "id": "ART-001",
+      "kind": "code",
+      "path": "src/fastedit/inference/chunked_merge.py",
+      "created_by": "W-004",
+      "status": "verified",
+      "source_of_truth": "src/fastedit/inference/chunked_merge.py",
+      "generator_command": null
+    },
+    {
+      "id": "ART-002",
+      "kind": "test",
+      "path": "tests/test_hallucination_validation.py",
+      "created_by": "W-004",
+      "status": "verified",
+      "source_of_truth": "tests/test_hallucination_validation.py",
+      "generator_command": null
+    }
+  ],
   "external_dependencies": []
 }
