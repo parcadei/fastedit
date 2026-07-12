@@ -1,0 +1,151 @@
+{
+  "role": "implement",
+  "profile": {
+    "id": "code_patch",
+    "version": "v4",
+    "dod_profile": "patch",
+    "active_axis_gates": [
+      "regression-first",
+      "marker-side-order",
+      "occurrence-order-and-multiplicity",
+      "changed-file-lint"
+    ]
+  },
+  "work_item": {
+    "id": "WI-001",
+    "attempt": "ATT-004",
+    "worker": "W-004",
+    "assertion": "VAL-001",
+    "stage": "ready",
+    "depends": []
+  },
+  "assertion": {
+    "id": "VAL-001",
+    "type": "property",
+    "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
+    "severity": "blocker"
+  },
+  "context": {
+    "conventions_delta": "Read and follow CLAUDE.md completely. DEC-001 explicitly authorizes this additional recovery round. Write the mandatory negative tests first and show them RED on 0039c6d before implementation. Do not weaken, delete, skip, xfail, or rewrite any existing oracle.",
+    "current_candidate": {
+      "commit": "0039c6d",
+      "branch": "parcadei/fastedit-hallucination-worker-w001",
+      "worktree": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "design": "Anchor-guided invariant validator using text_match._replacement_key, LCS survivor alignment, per-segment marker protection, and local deletion justification.",
+      "keep": "The design fixes issue #3, marker preservation, mismatched-key deletion, occurrence order/multiplicity, and deterministic_edit faithful-output parity. Preserve those properties."
+    },
+    "blocking_finding": {
+      "root_cause": "_segment_is_faithful checks new-vs-new order and survivor-vs-survivor order but discards the relative position between unmatched snippet-new lines and matched marker-preserved survivors.",
+      "semantic_reference": "text_match module contract: new lines before a marker appear before the preserved gap; new lines after a marker appear after the preserved gap.",
+      "observed": [
+        {
+          "case": "after-marker moved before gap",
+          "original": "def g(): / p = 1 / q = 2 / return p",
+          "snippet": "def g(): / p = 1 / marker / r = 3 / return p",
+          "corrupt_merged": "def g(): / p = 1 / r = 3 / q = 2 / return p",
+          "score_on_0039c6d": 1.0,
+          "required": "reject"
+        },
+        {
+          "case": "before-marker moved after gap",
+          "original": "def foo(): / a = 1 / b = 2 / c = 3 / return a",
+          "snippet": "def foo(): / a = 1 / z = 99 / marker / return a",
+          "corrupt_merged": "def foo(): / a = 1 / b = 2 / c = 3 / z = 99 / return a",
+          "score_on_0039c6d": 1.0,
+          "required": "reject"
+        },
+        {
+          "case": "identity-free before-marker moved after gap",
+          "original": "def f(): / anchor() / old() / keep() / end()",
+          "snippet": "def f(): / anchor() / new() / marker / end()",
+          "corrupt_merged": "def f(): / anchor() / old() / keep() / new() / end()",
+          "score_on_0039c6d": 1.0,
+          "required": "reject"
+        }
+      ]
+    },
+    "required_behavior": [
+      "In a marker-protected segment, snippet-new occurrences before the first marker must occur before every surviving original occurrence in that segment.",
+      "Snippet-new occurrences after the last marker must occur after every surviving original occurrence in that segment.",
+      "Snippet-new occurrences between multiple markers remain position-ambiguous relative to preserved originals; retain the current invariant checks without inventing an exact placement for them.",
+      "A correctly placed local replacement remains valid: a before-marker new line may replace a justified front/keyed original and must still precede remaining survivors; the symmetric after-marker case must follow remaining survivors.",
+      "If a marker-protected segment has no surviving originals, the side constraint is vacuous; deletion justification still controls acceptance.",
+      "Keep issue #3 exact reproduction accepted at 1.0 and every existing positive/negative validator regression green.",
+      "Keep faithful deterministic_edit parity for new-before, new-after, marker-only, no-marker replacement, top/bottom insertion, and keyed replacement.",
+      "Preserve marker-leak, invention, omission, duplicate, unrelated-deletion, anchor-order, new-order, and multiplicity rejection."
+    ],
+    "mandatory_tests": [
+      "Reject the exact after-marker moved-before-gap case above.",
+      "Reject the exact before-marker moved-after-gap case above.",
+      "Reject the exact identity-free wrong-side case above.",
+      "Accept correctly placed before-marker and after-marker insertions with all bystanders preserved.",
+      "Accept correctly placed identity-free local replacements while rejecting the same replacement moved past its surviving bystander.",
+      "Cover repeated identical preserved originals so an LCS tie cannot hide a wrong-side new occurrence.",
+      "If multiple-marker between-marker placement is intentionally unconstrained, add a focused regression documenting that boundary."
+    ],
+    "implementation_guidance": [
+      "Use the matched merged indices already available from _lcs_matched (or a comparably occurrence-aware alignment) to retain survivor/new relative positions; do not fall back to sets or global counts.",
+      "Map unmatched merged occurrences to new_all in declared order and enforce side constraints by occurrence index, not by line value, so duplicates remain correct.",
+      "Keep helpers small and reuse the existing _replacement_key; do not add another language heuristic or restore the prior expected-output synthesizer.",
+      "Do not require exact deterministic_edit output globally: model fallback still handles ambiguous snippets where deterministic_edit returns None.",
+      "No public API, dependency, threshold, tldr, tree-sitter, or unrelated changes."
+    ],
+    "anti_gaming": [
+      "Show all three blocking wrong-side tests fail on 0039c6d before implementation.",
+      "Mutation-check the side-order guard by temporarily disabling it and showing at least one negative test fails, then restore it.",
+      "Extend the independent generated matrix with correct-side and wrong-side variants and report exact accept/reject counts.",
+      "Run git diff --check and changed-file Ruff."
+    ],
+    "environment": {
+      "package_manager": "uv 0.7.17",
+      "focused_command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py tests/test_text_match.py",
+      "full_command": "uv run --with pytest python -m pytest -q",
+      "baseline": "Four optional-MLX CLI failures are pre-existing; no new failure is allowed.",
+      "preexisting_untracked": [
+        ".claude/",
+        ".tldr/"
+      ]
+    },
+    "report_schema": {
+      "id": "REP-W-004",
+      "worker": "W-004",
+      "worker_result": "success, partial, or blocked",
+      "design_decision": "boolean",
+      "minimalism_descent": "string",
+      "tests": "object with added array, command, exit_code, anti_gaming",
+      "checks": "array of {kind, command, exit_code, observed}; failed commands must never be reported with exit_code 0",
+      "out_of_bounds": "array",
+      "interfaces_changed": "array",
+      "other_required_arrays": "generated_artifacts, corrections, discoveries, issues, conventions"
+    }
+  },
+  "bounds": {
+    "files": [
+      "src/fastedit/inference/chunked_merge.py",
+      "tests/test_hallucination_validation.py"
+    ],
+    "worktree": {
+      "required": true,
+      "expected_branch": "parcadei/fastedit-hallucination-worker-w001",
+      "expected_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "verified": true
+    },
+    "tdd": true,
+    "commit_after": true,
+    "forbidden": [
+      "modifying or committing the pre-existing .claude/ or .tldr/ directories",
+      "dependency or lockfile changes",
+      "public API or score-threshold changes",
+      "tldr or tree-sitter changes",
+      "unrelated baseline cleanup",
+      "editing continuum/autonomous or contract.json inside the worker worktree",
+      "pushing, publishing, tagging, deploying, or opening a pull request"
+    ]
+  },
+  "authority": {
+    "autonomy_level": "execute_with_gates",
+    "deploy_authorized": false,
+    "depth_override": "DEC-001 authorizes ATT-004 only"
+  },
+  "output": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-004.json"
+}
