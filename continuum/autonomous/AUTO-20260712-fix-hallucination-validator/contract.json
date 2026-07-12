@@ -409,6 +409,26 @@
         "orca_dispatch_id": "ctx_0af6d43cb0e4",
         "orca_terminal_handle": "term_a7bc8302-2c09-4692-8f8f-33b295172198",
         "orca_dispatch_status": "completed"
+      },
+      {
+        "attempt": "ATT-004",
+        "worker": "W-004",
+        "kind": "orca_supervised_dispatch",
+        "agent": "claude",
+        "requested_model": "Claude Opus 4.8",
+        "cli_model": "opus",
+        "effort": "max",
+        "permission_mode": "bypassPermissions",
+        "startup_command": "claude --model opus --effort max --dangerously-skip-permissions",
+        "report_path": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-004.json",
+        "worktree_id": "db7813d2-cc8f-4711-91b9-747ef137e8c2::/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+        "worktree_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+        "worktree_branch": "parcadei/fastedit-hallucination-worker-w001",
+        "orca_task_id": "task_5b36476bd00d",
+        "orca_dispatch_id": "ctx_c8150410958f",
+        "orca_terminal_handle": "term_42786b5d-82df-4882-84c0-40953f75e254",
+        "orca_dispatch_status": "dispatched",
+        "authorization": "DEC-001"
       }
     ],
     "next_worker_launch": {
@@ -473,7 +493,7 @@
       "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
       "milestone": null,
       "scope": "pre_merge",
-      "status": "ready",
+      "status": "running",
       "validation_result": null,
       "validation_reason": "DEC-001 authorized ATT-004. Revalidation must add and pass negative before-marker/after-marker side-placement oracles before this assertion can pass.",
       "depends": [],
@@ -497,7 +517,7 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "ready",
+      "stage": "running",
       "depends": [],
       "attempts": [
         {
