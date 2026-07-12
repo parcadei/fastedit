@@ -288,7 +288,7 @@
       "probability": "high",
       "impact": "high",
       "mitigation": "VAL-001",
-      "status": "open",
+      "status": "realized",
       "finding_severity": "warn",
       "routing": "add_assertion"
     },
@@ -344,8 +344,22 @@
       "orca_task_id": "task_273cb7b949ec",
       "orca_dispatch_id": "ctx_6eb54bff41bb",
       "orca_terminal_handle": "term_a6a403a5-342a-4850-8846-f0a94a0fa556",
-      "orca_dispatch_status": "dispatched"
+      "orca_dispatch_status": "completed"
     },
+    "attempt_validations": [
+      {
+        "attempt": "ATT-001",
+        "result": "failed",
+        "report_schema_valid": false,
+        "blocking_findings": [
+          "The implementation discards markers before deriving the mutable span, so faithful merges that preserve marker-omitted original lines score 0.0.",
+          "The same marker blindness scores a corrupt merge that drops the omitted bystander as 1.0.",
+          "New snippet lines can be reordered while the multiset and preserved-original subsequence checks still pass.",
+          "REP-W-001 uses invalid worker-report field types for worker_result, design_decision, checks, out_of_bounds, and interfaces_changed."
+        ],
+        "evidence": "Independent inline execution against commit 3265141 produced scores 0.0, 1.0, 0.0, and 1.0 for faithful-marker, corrupt-marker, faithful-insertion, and corrupt-new-order cases respectively."
+      }
+    ],
     "prepared_checks": {
       "focused": "uv run --with pytest python -m pytest -q <worker-selected regression test>",
       "reachable_suite": "uv run --with pytest python -m pytest -q with the four recorded optional-MLX baseline cases excluded only for delta attribution",
@@ -385,7 +399,7 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "running",
+      "stage": "reported",
       "depends": [],
       "attempts": [
         {
@@ -393,8 +407,8 @@
           "worker": "W-001",
           "report": "REP-W-001",
           "kind": "initial",
-          "worker_result": "pending",
-          "validation_result": null
+          "worker_result": "partial",
+          "validation_result": "failed"
         }
       ],
       "report": {

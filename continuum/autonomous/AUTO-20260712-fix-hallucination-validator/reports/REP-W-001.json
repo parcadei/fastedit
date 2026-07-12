@@ -1,0 +1,122 @@
+{
+  "id": "REP-W-001",
+  "worker": "W-001",
+  "task": "AUTO-20260712-fix-hallucination-validator",
+  "work_item": "WI-001",
+  "assertion": "VAL-001",
+  "stage": "executed",
+  "worker_result": "Implemented an order- and multiplicity-aware replacement validator that accepts faithful line-replacing merges and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, leak a marker, or mishandle repeated identical lines via set collapse. Issue #3 faithful one-line return replacement now scores 1.0 (was 0.0).",
+  "implemented": {
+    "scope": "src/fastedit/inference/chunked_merge.py (_check_hallucinations + new private helper _order_preserved); tests/test_hallucination_validation.py (new regression matrix).",
+    "design": "Replace set-based anchor scoring with a forward-scan-based replacement detector. The new algorithm: (1) strips blank/marker lines from original, merged, snippet to a list of stripped real lines; (2) forward-scans snippet lines against the original — a snippet line matching an unconsumed original line is a 'preserved' context anchor (must appear in merged with same multiplicity and order), a snippet line with no match is 'new' content (must appear in merged at least as often as the snippet declares); (3) classifies the unconsumed originals as the 'replacement span' (allowed to disappear iff the new content is present); (4) builds the expected merged multiset as Counter(orig) - Counter(replaced) + Counter(new); (5) compares merged multiset to the expected one (catches missing-snippet, invented, duplicate, unrelated-deletion in one shot); (6) verifies the preserved lines appear in merged in original order (catches reordering); (7) explicit raw-line scan rejects marker leakage (the multiset comparison strips markers, so leakage must be detected before that step). Returns 1.0 iff every check passes, 0.0 otherwise — a clean binary that the existing 0.85 / 0.5 retry-then-reject thresholds already know how to drive. The private helper signature is unchanged (backward-compatible).",
+    "why_this_design": "The previous implementation normalized to stripped global sets and excluded every snippet line from anchors, which lost both order and multiplicity: any line being replaced by a snippet line was misclassified as an anchor that needed to survive in the merged output. Cardinality-only shortcuts (the issue's proposed len(lost_anchors) <= len(snippet_new)) accept additive edits that drop unrelated lines, one-to-many replacements with bystander deletions, and duplicate output. The new algorithm captures the intended replacement span structurally via forward scan and verifies every other property independently. No new dependencies (Counter is stdlib). No public API change. No YAML or spec-layer involvement — this is a single private helper.",
+    "files_changed": [
+      "src/fastedit/inference/chunked_merge.py",
+      "tests/test_hallucination_validation.py"
+    ]
+  },
+  "remaining": "Nothing in scope. The validator now satisfies VAL-001. Two notes for the orchestrator's downstream validation pass: (1) The validator returns a binary 1.0/0.0 score; downstream retry behavior (score < 0.85 → retry once, score < 0.5 → reject) is unchanged and continues to operate correctly because the binary score interacts with the thresholds exactly as the old continuous score did — a faithful merge now lands at 1.0 and skips the retry, while any hallucinated output lands at 0.0 and triggers the existing retry-then-reject policy. (2) Stochastic models still benefit from the retry path because a re-rolled merge can score 1.0 and replace the 0.0 attempt.",
+  "blocked_reason": null,
+  "design_decision": "Use Counter-based multiset comparison for multiplicity + a separate single-cursor walk for relative-order verification. Marker leak detection runs before the multiset comparison so leaked markers cannot be silently stripped. This three-check decomposition (multiset, order, marker-leak) is the minimal structure that satisfies every regression case in the matrix without smuggling hidden assumptions about which original line was 'meant' to be replaced — the forward scan derives the replacement span from the snippet's own structure, so the validator stays declarative and language-agnostic. Returning a binary score keeps the existing retry-and-reject threshold logic fully in charge of the model's behavior, which is what the rest of chunked_merge already expects.",
+  "alternatives_considered": [
+    {
+      "name": "difflib.SequenceMatcher opcode walk",
+      "why_rejected": "SequenceMatcher's optimal alignment can re-attribute an unrelated bystander deletion to a 'replace' opcode block (e.g., for [A,B,C] vs [A,X,C,Y], one optimal alignment absorbs B into the [B,C] → [X,C] replace, masking the bystander delete). Detecting that needs an extra cross-check against an independent expected span — the forward-scan approach derives the expected span directly without relying on SequenceMatcher's optimization choices, so the design has fewer moving parts and fewer failure modes to test.",
+      "verdict": "rejected"
+    },
+    {
+      "name": "len(lost_anchors) <= len(snippet_new) cardinality shortcut (issue proposal)",
+      "why_rejected": "Documented unsafe in the contract. Accepts additive edits that drop unrelated lines, one-to-many replacements that also drop a bystander, and duplicate output. The forward-scan-based algorithm fixes all three at the source instead of patching the symptom.",
+      "verdict": "rejected"
+    },
+    {
+      "name": "Continuous weighted score (multiplicity + order + marker)",
+      "why_rejected": "Adds tunable weights and a gradient that downstream retry logic would need to reason about. The existing threshold machinery already drives a clean 1.0 vs 0.0 distinction (passes retry gating, fails reject gating), so a binary score composes with the rest of the pipeline without any new configuration. The retry path still gives stochastic models a chance to roll a faithful merge on the second attempt.",
+      "verdict": "rejected"
+    },
+    {
+      "name": "Lift _check_hallucinations into its own module under inference/",
+      "why_rejected": "The function is private to chunked_merge (the underscore prefix and the docstring's reference to it as a 'private helper'). Moving it would expand the touched surface for no semantic gain and would force more import plumbing in the call sites at lines 833 and 842.",
+      "verdict": "rejected"
+    }
+  ],
+  "minimalism_descent": {
+    "minimal_correct_change": "Rewrite the body of _check_hallucinations to (a) extract stripped real lines for original, merged, snippet; (b) explicit raw-line marker-leak guard; (c) forward-scan snippet to classify preserved vs new; (d) derive replacement span; (e) Counter multiset check; (f) _order_preserved walk. Add a private _order_preserved helper for (f). No other code in chunked_merge.py or anywhere else needs to change.",
+    "what_was_excluded": "No new module. No new dependency. No public signature change. No changes to the chunked_merge call sites (the helper's signature is unchanged). No changes to other inference helpers. No edits to continuum/, contract.json, or any worker-forbidden path.",
+    "no_helper_signature_change": "_check_hallucinations(original_chunk: str, merged_chunk: str, snippet: str) -> float is preserved verbatim. Backward compatibility per the contract."
+  },
+  "tests": {
+    "new_test_file": "tests/test_hallucination_validation.py",
+    "new_test_count": 13,
+    "test_method": "Direct unit tests against _check_hallucinations with hand-picked fixtures matching the contract's required_regressions list (issue #3 faithful accept, unrelated deletion reject, one-to-many with bystander reject, additive with unrelated delete reject, duplicate supported lines reject, reordered preserved reject, missing required snippet reject, invented output reject, marker leak reject — both hash and slash forms — repeated identical originals multiplicity accept, identity accept, pure-addition-with-marker accept).",
+    "reproduces_issue_3": true,
+    "failing_before_fix": 9,
+    "passing_after_fix": 13
+  },
+  "checks": {
+    "focused_test_command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py",
+    "focused_test_result": "13 passed in 0.10s",
+    "full_suite_command": "uv run --with pytest python -m pytest -q",
+    "full_suite_result": "877 passed, 24 skipped, 4 failed (the 4 failed are the contract-recorded baseline MLX import failures — ModuleNotFoundError on optional mlx package — unchanged from the 864-passed / 4-failed baseline)",
+    "baseline_comparison": "Baseline (contract): 864 passed, 24 skipped, 4 MLX failures. After patch: 877 passed (864 + 13 new), 24 skipped, 4 MLX failures. No new failures introduced.",
+    "changed_file_lint_command": "uv run --with ruff ruff check src/fastedit/inference/chunked_merge.py tests/test_hallucination_validation.py",
+    "changed_file_lint_result": "All checks passed!",
+    "diff_integrity": "git diff --check returned no output (clean)"
+  },
+  "files_changed": [
+    "src/fastedit/inference/chunked_merge.py",
+    "tests/test_hallucination_validation.py"
+  ],
+  "out_of_bounds": {
+    "violations": [],
+    "edits_inside_worktree_only": true,
+    "writes_outside_worktree": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-001.json (this report — sole permitted external write per contract)",
+    "forbidden_actions_avoided": [
+      "no dependency additions or lockfile changes",
+      "no public API changes",
+      "no tldr or tree-sitter changes",
+      "no unrelated baseline test or Ruff cleanup",
+      "no edits to continuum/autonomous/ or contract.json in the worktree",
+      "no publishing, pushing, tagging, deploying, or opening a pull request"
+    ]
+  },
+  "interfaces_changed": {
+    "_check_hallucinations": {
+      "kind": "function",
+      "module": "src/fastedit/inference/chunked_merge.py",
+      "signature": "_check_hallucinations(original_chunk: str, merged_chunk: str, snippet: str) -> float",
+      "behavior_change": "Returns 1.0 for any merge that satisfies (a) no marker leak, (b) preserved lines appear in merged with original order and multiplicity, (c) every snippet-new line appears in merged with at least the declared multiplicity, (d) merged contains no lines that are neither original-allowed nor snippet-declared. Returns 0.0 otherwise. The previous implementation's continuous score (anchor_score - invention_rate, with marker penalty) is replaced by a binary score that the existing 0.85 / 0.5 threshold machinery already drives correctly.",
+      "backward_compatible": true
+    },
+    "_order_preserved": {
+      "kind": "function",
+      "module": "src/fastedit/inference/chunked_merge.py",
+      "signature": "_order_preserved(expected_preserved: list[str], merged_list: list[str]) -> bool",
+      "behavior_change": "new private helper used by _check_hallucinations to verify the relative order of preserved lines"
+    }
+  },
+  "generated_artifacts": [
+    "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-001.json"
+  ],
+  "corrections": [],
+  "discoveries": [
+    {
+      "finding": "The previous validator's 'anchors' list (orig lines NOT in snippet_code set) silently misclassified the line being replaced as an anchor whenever its stripped form did not appear in the snippet. Faithful one-line return replacements always scored 0.0.",
+      "impact": "Confirmed by direct call: _check_hallucinations(<original>, <snippet>, <snippet>) returned 0.0 for the issue #3 reproduction.",
+      "fix": "Forward-scan the snippet against the original to identify the replacement span; only unconsumed originals are in the replacement span, every other original is a preserved line."
+    },
+    {
+      "finding": "Stripping markers in the multiset comparison hides marker leakage. The new algorithm must scan raw merged lines for marker phrases before the comparison.",
+      "impact": "Without the explicit guard, a marker-only echo in merged would silently pass the multiset check.",
+      "fix": "Added a single for-loop that returns 0.0 on the first marker hit in the raw merged chunk."
+    }
+  ],
+  "issues": [],
+  "conventions": {
+    "no_hardcoding": "The fix is structural (forward-scan + multiset + order + marker-guard), not framework-specific. No if/elif branches keyed on language, package, or call style. The validator remains a pure function of (original_chunk, merged_chunk, snippet).",
+    "tests_before_implementation": "tests/test_hallucination_validation.py was authored first and verified to fail against the current implementation (9 of 13 tests failed before the rewrite), then implementation made all 13 pass.",
+    "follow_existing_patterns": "Uses _is_marker_line helper already in chunked_merge. Imports Counter from collections (stdlib). Does not touch any other module in src/fastedit/.",
+    "lint_before_commit": "uv run --with ruff ruff check on both changed files returns All checks passed!.",
+    "delta_attribution": "Full-suite run shows 4 failures (all mlx ModuleNotFoundError), 24 skipped, 877 passed — baseline was 864 / 24 / 4; delta is +13 passed (the new tests) and zero new failures."
+  }
+}
