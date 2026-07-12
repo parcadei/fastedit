@@ -1,0 +1,138 @@
+{
+  "role": "implement",
+  "profile": {
+    "id": "code_patch",
+    "version": "v4",
+    "dod_profile": "patch",
+    "active_axis_gates": [
+      "regression-first",
+      "marker-aware-validation",
+      "order-and-multiplicity",
+      "changed-file-lint"
+    ]
+  },
+  "work_item": {
+    "id": "WI-001",
+    "assertion": "VAL-001",
+    "stage": "ready",
+    "depends": []
+  },
+  "assertion": {
+    "id": "VAL-001",
+    "type": "property",
+    "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
+    "severity": "blocker",
+    "evidence_required": {
+      "class": "property_execution",
+      "profile": "validator-regression-matrix"
+    }
+  },
+  "context": {
+    "conventions_delta": "Read and follow CLAUDE.md. This is fix round 1. Add failing tests for every coordinator counterexample before changing the implementation. Do not weaken, delete, or rewrite the existing regression oracle merely to pass.",
+    "structure": "Continue in the existing isolated worker branch at commit 3265141. The current forward-scan implementation in _check_hallucinations is rejected because it drops marker semantics and treats every unmentioned original line as replaceable.",
+    "environment": {
+      "branch": "parcadei/fastedit-hallucination-worker-w001",
+      "worktree": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "package_manager": "uv 0.7.17",
+      "baseline": "864 passed, 24 skipped, 4 unrelated optional-MLX failures; 39 unrelated repository-wide Ruff findings"
+    },
+    "interfaces": [
+      {
+        "kind": "function",
+        "name": "_check_hallucinations",
+        "compatibility": "backward-compatible"
+      }
+    ],
+    "prior_report": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-001.json",
+    "attempt_1_findings": [
+      {
+        "case": "faithful marker-preserved bystander",
+        "original": "def f(): / context() / old() / must_survive()",
+        "snippet": "def f(): / context() / new() / marker",
+        "merged": "def f(): / context() / new() / must_survive()",
+        "observed": "0.0",
+        "required": "accepted"
+      },
+      {
+        "case": "corrupt marker merge drops bystander",
+        "original": "def f(): / context() / old() / must_survive()",
+        "snippet": "def f(): / context() / new() / marker",
+        "merged": "def f(): / context() / new()",
+        "observed": "1.0",
+        "required": "rejected"
+      },
+      {
+        "case": "faithful top insertion preserves marker-omitted body",
+        "original": "def f(): / first() / second()",
+        "snippet": "def f(): / added() / marker",
+        "merged": "def f(): / added() / first() / second()",
+        "observed": "0.0",
+        "required": "accepted"
+      },
+      {
+        "case": "corrupt new-line reorder",
+        "original": "A / B",
+        "snippet": "A / X / Y / B",
+        "merged": "A / Y / X / B",
+        "observed": "1.0",
+        "required": "rejected"
+      }
+    ],
+    "required_design_corrections": [
+      "Markers are preservation wildcards. A line omitted behind a marker is not automatically in a replacement span.",
+      "Validate the ordered original-to-merged diff locally. Every actual deletion must be justified one-to-one by a snippet-declared replacement in the same local hunk or by an explicit edit plan; an unpaired deletion is rejection.",
+      "A robust option is SequenceMatcher with autojunk disabled plus an independent structural replacement cross-check. SequenceMatcher alone is insufficient, but pairing every deleted occurrence prevents a replace opcode from hiding a bystander deletion.",
+      "Use a generic replacement identity where needed: unique assignment LHS, stable declaration identity, or same flow-statement kind such as return-to-return. Reject ambiguous pairings rather than compensating by count.",
+      "Every non-marker snippet line must appear in merged output in snippet order and declared multiplicity. This prevents new-line reordering and omission.",
+      "Every merged insertion must be supported by snippet multiplicity. This prevents invention and unsupported duplication.",
+      "All original occurrences outside justified replacement pairs must survive in order and multiplicity, including marker-omitted lines.",
+      "Keep marker-leak rejection and the private public-facing signature stable. No dependency additions."
+    ],
+    "required_regression_additions": [
+      "Faithful marker-preserved bystander accepted.",
+      "Corresponding bystander deletion rejected.",
+      "Faithful top insertion with omitted preserved body accepted.",
+      "Reordered newly introduced lines rejected.",
+      "At least one marker preserving multiple omitted lines around a local replacement.",
+      "At least one ambiguous replacement-key case that fails closed."
+    ],
+    "report_schema_correction": {
+      "worker_result": "Must be exactly success, partial, or blocked.",
+      "design_decision": "Must be a boolean.",
+      "minimalism_descent": "Must be a string.",
+      "tests": "Must be an object with added array, command, exit_code, and anti_gaming.",
+      "checks": "Must be an array of objects with kind, command, exit_code, and observed.",
+      "out_of_bounds": "Must be an array.",
+      "interfaces_changed": "Must be an array.",
+      "all_other_required_arrays": "generated_artifacts, corrections, discoveries, issues, conventions must be arrays."
+    }
+  },
+  "bounds": {
+    "files": [
+      "src/fastedit/inference/chunked_merge.py",
+      "tests/test_hallucination_validation.py"
+    ],
+    "worktree": {
+      "required": true,
+      "expected_branch": "parcadei/fastedit-hallucination-worker-w001",
+      "expected_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "verified": true
+    },
+    "test_command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py",
+    "tdd": true,
+    "commit_after": true,
+    "forbidden": [
+      "dependency additions or lockfile changes",
+      "public API changes",
+      "tldr or tree-sitter changes",
+      "unrelated baseline cleanup",
+      "editing continuum/autonomous or contract.json in the worker worktree",
+      "pushing, publishing, tagging, deploying, or opening a pull request"
+    ]
+  },
+  "authority": {
+    "autonomy_level": "execute_with_gates",
+    "deploy_authorized": false
+  },
+  "output": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-002.json"
+}

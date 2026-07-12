@@ -319,7 +319,7 @@
     "constraints": [
       "Editing worker must use an Orca-created isolated worktree.",
       "Worker must use MiniMax-M3 through OpenCode as explicitly interpreted from the requested Luna Max worker.",
-      "Worker may write only REP-W-001.json outside its worktree.",
+      "Each worker may write only its assigned REP-W-NNN.json outside its worktree.",
       "Orchestrator owns contract, integration, validation, release record, and ledger state."
     ],
     "structure": "tldr structure identifies _check_hallucinations at src/fastedit/inference/chunked_merge.py:116-174 and chunked_merge at lines 412-889.",
@@ -399,7 +399,7 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "reported",
+      "stage": "ready",
       "depends": [],
       "attempts": [
         {
