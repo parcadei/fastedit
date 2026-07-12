@@ -336,7 +336,11 @@
       "agent": "opencode",
       "model": "minimax-coding-plan/MiniMax-M3",
       "startup_command": "opencode -m minimax-coding-plan/MiniMax-M3 --agent build --auto",
-      "report_path": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-001.json"
+      "report_path": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-001.json",
+      "worktree_id": "db7813d2-cc8f-4711-91b9-747ef137e8c2::/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "worktree_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "worktree_branch": "parcadei/fastedit-hallucination-worker-w001",
+      "worktree_verified": true
     },
     "prepared_checks": {
       "focused": "uv run --with pytest python -m pytest -q <worker-selected regression test>",
@@ -353,7 +357,7 @@
       "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
       "milestone": null,
       "scope": "pre_merge",
-      "status": "ready",
+      "status": "running",
       "validation_result": null,
       "validation_reason": null,
       "depends": [],
@@ -377,9 +381,18 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "ready",
+      "stage": "running",
       "depends": [],
-      "attempts": [],
+      "attempts": [
+        {
+          "id": "ATT-001",
+          "worker": "W-001",
+          "report": "REP-W-001",
+          "kind": "initial",
+          "worker_result": "pending",
+          "validation_result": null
+        }
+      ],
       "report": {
         "schema": "reports.md section worker-report v4.1",
         "path_pattern": "reports/REP-{worker-id}.json"
