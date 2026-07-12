@@ -319,3 +319,226 @@ def test_pure_addition_with_marker_accepted():
         f"Pure-addition merge scored {score:.3f}, "
         f"expected >= {PASS_THRESHOLD}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Fix-round-1 counterexamples — marker semantics and new-line order
+# ---------------------------------------------------------------------------
+#
+# The original validator mis-treated every unmentioned original line as a
+# replaceable slot and conflated preserved-line order with snippet-new-line
+# order. The cases below pin the corrected behaviour:
+#
+#   * a marker at the END of a hunk is a preservation wildcard for the
+#     original lines that follow the last context anchor — they MUST
+#     appear in the merge in order, with multiplicity. Lines that the
+#     snippet did NOT declare as a replacement MUST NOT be deleted;
+#   * a marker at the START of a hunk is a preservation wildcard for
+#     the original lines that come before the first context anchor;
+#   * when the snippet only anchors the signature (line 0) and uses a
+#     single marker, new lines are insertions, not replacements;
+#   * new lines declared by the snippet must appear in the merge in
+#     snippet order (the order check is on the snippet's new lines,
+#     not on the original's preserved lines).
+#
+# These four properties together close the gap that the previous
+# validator left open.
+
+
+def test_faithful_marker_preserved_bystander_accepted():
+    """Round-1 counterexample 1: a faithful merge where the trailing
+    marker preserves the line AFTER the replaced original must be
+    accepted. The snippet declares the replacement of ``old()`` with
+    ``new()`` and uses a marker to preserve everything from that point
+    onward, so ``must_survive()`` must appear in the merge."""
+    original = (
+        "def f():\n"
+        "    context()\n"
+        "    old()\n"
+        "    must_survive()\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    context()\n"
+        "    new()\n"
+        "# ... existing code ...\n"
+    )
+    merged = (
+        "def f():\n"
+        "    context()\n"
+        "    new()\n"
+        "    must_survive()\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score >= PASS_THRESHOLD, (
+        f"Faithful marker-preserved bystander scored {score:.3f}, "
+        f"expected >= {PASS_THRESHOLD}"
+    )
+
+
+def test_corrupt_marker_merge_drops_bystander_rejected():
+    """Round-1 counterexample 2: a corrupt merge that drops the marker-
+    preserved bystander must be rejected. The same snippet, but the
+    merge forgets ``must_survive()``. The marker promised to preserve
+    it, so the merge is hallucinated."""
+    original = (
+        "def f():\n"
+        "    context()\n"
+        "    old()\n"
+        "    must_survive()\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    context()\n"
+        "    new()\n"
+        "# ... existing code ...\n"
+    )
+    merged = (
+        "def f():\n"
+        "    context()\n"
+        "    new()\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Bystander-deletion merge scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_faithful_top_insertion_preserves_marker_omitted_body_accepted():
+    """Round-1 counterexample 3: a faithful top-insertion pattern where
+    the marker preserves the entire original body must be accepted.
+    The snippet only anchors the signature (``def f():``) and inserts
+    ``added()`` at the top of the body, leaving ``first()`` and
+    ``second()`` to be carried through verbatim."""
+    original = (
+        "def f():\n"
+        "    first()\n"
+        "    second()\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    added()\n"
+        "# ... existing code ...\n"
+    )
+    merged = (
+        "def f():\n"
+        "    added()\n"
+        "    first()\n"
+        "    second()\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score >= PASS_THRESHOLD, (
+        f"Faithful top-insertion merge scored {score:.3f}, "
+        f"expected >= {PASS_THRESHOLD}"
+    )
+
+
+def test_corrupt_new_line_reorder_rejected():
+    """Round-1 counterexample 4: reordering the snippet's newly declared
+    lines is rejected even when the multiset of merged lines is
+    correct. ``X, Y`` in the snippet must appear in that order in the
+    merged output; emitting ``Y`` before ``X`` violates the snippet's
+    declared ordering."""
+    original = "A\nB\n"
+    snippet = "A\nX\nY\nB\n"
+    merged = "A\nY\nX\nB\n"
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"New-line reorder scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_marker_preserves_multiple_omitted_lines_around_local_replacement():
+    """A marker that brackets a multi-line original region and a local
+    replacement both work in the same merge. The original lines outside
+    the local replacement zone MUST be preserved verbatim, and the
+    replacement MUST cover exactly the lines the snippet declares."""
+    original = (
+        "head1()\n"
+        "head2()\n"
+        "target()\n"
+        "tail1()\n"
+        "tail2()\n"
+    )
+    snippet = (
+        "head1()\n"
+        "head2()\n"
+        "replacement()\n"
+        "# ... existing code ...\n"
+    )
+    merged = (
+        "head1()\n"
+        "head2()\n"
+        "replacement()\n"
+        "tail1()\n"
+        "tail2()\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score >= PASS_THRESHOLD, (
+        f"Multi-line marker preservation scored {score:.3f}, "
+        f"expected >= {PASS_THRESHOLD}"
+    )
+
+
+def test_ambiguous_replacement_key_fails_closed():
+    """When two originals share the same replacement key (e.g. the
+    same assignment LHS) and the snippet declares a single replacement
+    with that key, the validator cannot decide which original was
+    intended and MUST fail closed rather than guess. The expected
+    behaviour is REJECT, because the validator's contract is to
+    refuse ambiguous pairings — see the design-corrective
+    ``required_design_corrections`` list."""
+    original = (
+        "self.x = 1\n"
+        "self.x = 2\n"
+        "self.y = 3\n"
+    )
+    # Two originals with the same LHS ``self.x``; the snippet declares
+    # only ONE replacement for ``self.x``. Pairing is ambiguous.
+    snippet = (
+        "self.x = 99\n"
+        "self.y = 3\n"
+    )
+    # Even an "obvious" pairing (replace the first self.x) is rejected
+    # because the validator cannot prove that intent.
+    merged = (
+        "self.x = 99\n"
+        "self.x = 2\n"
+        "self.y = 3\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Ambiguous replacement-key merge scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD} (fail closed)"
+    )
+
+
+def test_new_line_reorder_within_preserved_block_rejected():
+    """Reordering snippet-new lines that are NOT the only content of
+    the snippet also rejects. Same shape as
+    test_corrupt_new_line_reorder_rejected but exercising the case
+    where the originals include bystanders between the new lines."""
+    original = "A\nB1\nM\nC\nB2\n"
+    snippet = "A\nX1\nX2\nB2\n"
+    merged = "A\nX2\nX1\nB2\n"
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Reorder-among-bystanders scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
