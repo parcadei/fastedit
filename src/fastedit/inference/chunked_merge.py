@@ -60,7 +60,7 @@ from .symbols import (  # noqa: F401
     delete_symbol,
     move_symbol,
 )
-from .text_match import deterministic_edit  # noqa: F401
+from .text_match import _replacement_key, deterministic_edit  # noqa: F401
 
 # Phrases that mark "keep everything here" in snippets
 _MARKER_PHRASES = ("... existing code ...", "// ...", "# ...")
@@ -118,69 +118,344 @@ def _check_hallucinations(
     merged_chunk: str,
     snippet: str,
 ) -> float:
-    """Score merge quality: 1.0 = clean, lower = hallucinated.
+    """Score merge quality: 1.0 = clean, 0.0 = hallucinated.
 
-    A merge is faithful iff ``merged_chunk`` is exactly the result of
-    applying the snippet's intent to ``original_chunk``. The intent is
-    reconstructed by parsing the snippet into marker-separated hunks and
-    classifying each non-marker line as either a context anchor (it
-    matches an unused original line in forward order) or a new line.
+    The validator treats ``deterministic_edit``'s marker semantics as the
+    reference and checks the model's ``merged_chunk`` against a set of
+    *invariants* rather than reconstructing one mandatory expected output.
+    Marker syntax legitimately permits both preservation and a locally
+    justified replacement, so the validator accepts any merge that is a
+    faithful outcome under those rules and rejects everything else.
 
-    The validator rejects on:
+    The snippet is forward-scanned into context anchors (lines matching an
+    as-yet-unconsumed original line) and new lines, delimited by
+    preservation markers. The anchors partition the original — and the
+    anchors located in the merge partition the merge — into aligned
+    segments; each segment is validated independently.
 
-      * **marker leakage** — any snippet placeholder echoed into the
-        merge output. Caught by a raw-line scan of ``merged_chunk``
-        before any structural comparison.
-      * **invention** — lines that appear in ``merged_chunk`` but were
-        neither original nor declared by the snippet.
-      * **unrelated deletion** — original lines dropped without a
-        snippet-justified replacement at the same local position.
-      * **missing required snippet code** — a new line in the snippet
-        that does not appear in ``merged_chunk``.
-      * **unsupported duplication** — extra copies of preserved lines
-        or extra copies of new lines beyond the snippet's declared
-        multiplicity.
-      * **reordering** — preserved context lines appearing out of order,
-        or snippet-new lines appearing out of order.
-      * **ambiguous replacement pairing** — a snippet new line whose
-        replacement key (assignment LHS, declaration name, or flow-
-        statement kind) matches more than one original line in the
-        local gap. The validator fails closed rather than guess which
-        original the author meant.
+    A merge is rejected on any of:
 
-    ``original_chunk`` and ``merged_chunk`` are the chunk before and
-    after the model's edit; ``snippet`` is the user-declared intent.
-    Returns ``1.0`` for a clean merge and ``0.0`` for any violation.
+      * **marker leakage** — a snippet placeholder echoed into the merge.
+      * **anchor loss / reorder** — a declared context anchor missing from
+        the merge or appearing out of order.
+      * **invention / omission / duplication / new-line reorder** — the
+        merge's new lines in a segment must equal the snippet's declared
+        new lines for that segment exactly (order and multiplicity).
+      * **unjustified deletion** — a marker-protected original removed
+        without a local one-to-one justification: a unique shared
+        ``_replacement_key`` identity, or positional adjacency for an
+        identity-free line on the marker-adjacent side. A keyed original
+        may only be replaced by a same-key new line, never by positional
+        proximity; ambiguous keys fail closed.
+      * **preserved-line reorder / loss** — surviving originals must keep
+        their relative order and multiplicity.
+
+    ``_replacement_key`` (imported from :mod:`text_match`) is the single
+    shared identity heuristic — the validator maintains no second
+    language model. Returns ``1.0`` for a clean merge, ``0.0`` otherwise.
     """
-
     # Marker leak guard. Scan the raw merged chunk first so a leaked
     # marker cannot be hidden by the stripped-line comparison below.
     for raw_line in merged_chunk.splitlines():
         if raw_line.strip() and _is_marker_line(raw_line):
             return 0.0
 
-    orig_list = _real_lines(original_chunk)
-    merged_list = _real_lines(merged_chunk)
+    orig = _real_lines(original_chunk)
+    merged = _real_lines(merged_chunk)
+    tokens = _classify_snippet(snippet, orig)
 
-    # Parse the snippet into hunks (marker-bounded sections) and
-    # classify each non-marker line as a context anchor or a new line.
-    hunks = _parse_snippet_hunks(snippet, orig_list)
+    return 1.0 if _merge_is_faithful(orig, merged, tokens) else 0.0
 
-    # Compute the expected merged output. None means an ambiguous
-    # replacement key (fail closed).
-    expected = _compute_expected_merged(hunks, orig_list)
-    if expected is None:
-        return 0.0
 
-    # The expected sequence encodes both the multiset and the order of
-    # every line that should appear in the merge. A direct list
-    # comparison catches missing required code, invented lines,
-    # unrelated deletions, reordering, and unsupported duplication in
-    # a single check.
-    if expected != merged_list:
-        return 0.0
+def _classify_snippet(
+    snippet: str,
+    orig: list[str],
+) -> list[tuple[str, int | None, str | None]]:
+    """Forward-scan the snippet into ordered tokens.
 
-    return 1.0
+    Each token is ``("context", orig_idx, line)``, ``("new", None, line)``
+    or ``("marker", None, None)``. A non-marker snippet line is a *context*
+    anchor when it matches an as-yet-unconsumed original line (scanning
+    forward, so anchors are strictly increasing in ``orig_idx``); otherwise
+    it is a *new* line. This mirrors the classification in
+    ``deterministic_edit`` so the validator stays aligned with the engine
+    that produces real faithful merges.
+    """
+    tokens: list[tuple[str, int | None, str | None]] = []
+    cursor = 0
+    for raw in snippet.splitlines():
+        s = raw.strip()
+        if not s:
+            continue
+        if _is_marker_line(raw):
+            tokens.append(("marker", None, None))
+            continue
+        match_idx = None
+        for i in range(cursor, len(orig)):
+            if orig[i] == s:
+                match_idx = i
+                break
+        if match_idx is not None:
+            tokens.append(("context", match_idx, s))
+            cursor = match_idx + 1
+        else:
+            tokens.append(("new", None, s))
+    return tokens
+
+
+def _merge_is_faithful(
+    orig: list[str],
+    merged: list[str],
+    tokens: list[tuple[str, int | None, str | None]],
+) -> bool:
+    """Check the merge against the per-segment invariants.
+
+    Context anchors must appear in the merge in order (else declared
+    context was dropped or shuffled). The anchors partition the original
+    and the merge into aligned leading ("pre"), internal ("mid") and
+    trailing ("post") segments, each validated by
+    :func:`_segment_is_faithful`.
+    """
+    anchors = [t[1] for t in tokens if t[0] == "context"]
+
+    # Locate each anchor in the merge, in order. A missing or out-of-order
+    # anchor means declared context was lost or reordered.
+    merged_pos: list[int] = []
+    mcursor = 0
+    for a in anchors:
+        val = orig[a]
+        found = None
+        for j in range(mcursor, len(merged)):
+            if merged[j] == val:
+                found = j
+                break
+        if found is None:
+            return False
+        merged_pos.append(found)
+        mcursor = found + 1
+
+    for orig_seg, merged_seg, seg_tokens, kind in _build_segments(
+        orig, merged, tokens, anchors, merged_pos
+    ):
+        if not _segment_is_faithful(orig_seg, merged_seg, seg_tokens, kind):
+            return False
+    return True
+
+
+def _build_segments(
+    orig: list[str],
+    merged: list[str],
+    tokens: list[tuple[str, int | None, str | None]],
+    anchors: list[int],
+    merged_pos: list[int],
+) -> list[tuple[list[str], list[str], list[tuple[str, int | None, str | None]], str]]:
+    """Slice orig, merged and the snippet tokens into aligned segments.
+
+    Returns ``(orig_seg, merged_seg, seg_tokens, kind)`` per segment, where
+    ``seg_tokens`` are the non-context tokens (new lines and markers)
+    declared in that segment and ``kind`` is ``"pre"``, ``"mid"``,
+    ``"post"`` or ``"full"`` (the whole span when there are no anchors).
+    """
+    # Group non-context tokens by the anchor they follow: rank -1 means
+    # "before the first anchor", rank k means "after anchor k".
+    groups: dict[int, list[tuple[str, int | None, str | None]]] = {}
+    anchor_rank = -1
+    for t in tokens:
+        if t[0] == "context":
+            anchor_rank += 1
+        else:
+            groups.setdefault(anchor_rank, []).append(t)
+
+    if not anchors:
+        return [(orig, merged, groups.get(-1, []), "full")]
+
+    segments: list[
+        tuple[list[str], list[str], list[tuple[str, int | None, str | None]], str]
+    ] = []
+    segments.append((
+        orig[:anchors[0]],
+        merged[:merged_pos[0]],
+        groups.get(-1, []),
+        "pre",
+    ))
+    for k in range(len(anchors) - 1):
+        segments.append((
+            orig[anchors[k] + 1:anchors[k + 1]],
+            merged[merged_pos[k] + 1:merged_pos[k + 1]],
+            groups.get(k, []),
+            "mid",
+        ))
+    segments.append((
+        orig[anchors[-1] + 1:],
+        merged[merged_pos[-1] + 1:],
+        groups.get(len(anchors) - 1, []),
+        "post",
+    ))
+    return segments
+
+
+def _segment_is_faithful(
+    orig_seg: list[str],
+    merged_seg: list[str],
+    seg_tokens: list[tuple[str, int | None, str | None]],
+    kind: str,
+) -> bool:
+    """Validate one segment against the marker invariants.
+
+    Boundary segments (pre/post/full) preserve their originals by default
+    and become replacement zones only when they carry new lines with no
+    marker. Internal (mid) segments without a marker are replacement zones
+    (the gap is overwritten). Marker segments preserve originals unless a
+    deletion is locally justified.
+    """
+    new_all = [t[2] for t in seg_tokens if t[0] == "new"]
+    has_marker = any(t[0] == "marker" for t in seg_tokens)
+
+    if has_marker:
+        protected = True
+    elif kind == "mid":
+        protected = False
+    else:  # boundary segment
+        protected = not new_all
+
+    if not protected:
+        # Replacement zone: the originals are overwritten wholesale, so the
+        # merged segment must be exactly the declared new lines.
+        return merged_seg == new_all
+
+    # Protected: survivors are the originals kept (longest common
+    # subsequence); the remaining merged lines are new and must equal the
+    # declared new lines exactly. Every deleted original must be justified.
+    kept_orig, kept_merged = _lcs_matched(orig_seg, merged_seg)
+    new_in_merged = [
+        merged_seg[j] for j in range(len(merged_seg)) if j not in kept_merged
+    ]
+    if new_in_merged != new_all:
+        return False
+
+    deleted = [i for i in range(len(orig_seg)) if i not in kept_orig]
+    if not deleted:
+        return True
+    if not has_marker:
+        # Protected boundary segment with no marker: every original must
+        # survive — a deletion here has no local justification.
+        return False
+
+    marker_positions = [i for i, t in enumerate(seg_tokens) if t[0] == "marker"]
+    first_marker, last_marker = marker_positions[0], marker_positions[-1]
+    new_before = [
+        t[2] for i, t in enumerate(seg_tokens)
+        if t[0] == "new" and i < first_marker
+    ]
+    new_after = [
+        t[2] for i, t in enumerate(seg_tokens)
+        if t[0] == "new" and i > last_marker
+    ]
+    return _deletions_justified(
+        orig_seg, deleted, new_all, new_before, new_after
+    )
+
+
+def _deletions_justified(
+    orig_seg: list[str],
+    deleted: list[int],
+    new_all: list[str],
+    new_before: list[str],
+    new_after: list[str],
+) -> bool:
+    """Decide whether every deleted marker-protected original is justified.
+
+    A *keyed* original (``_replacement_key`` is not ``None``) may be deleted
+    only when exactly one original and exactly one declared new line share
+    its key — a unique shared identity. Any other keyed deletion fails
+    closed. An *identity-free* original may be deleted by positional
+    fallback only, when it sits contiguously against a marker boundary that
+    carries an identity-free new line (front for lines declared before the
+    marker, back for lines declared after) — never an arbitrary bystander.
+    """
+    n = len(orig_seg)
+    deleted_set = set(deleted)
+
+    orig_keys = [_replacement_key(line) for line in orig_seg]
+    orig_key_count: dict[str, int] = {}
+    for k in orig_keys:
+        if k is not None:
+            orig_key_count[k] = orig_key_count.get(k, 0) + 1
+    new_key_count: dict[str, int] = {}
+    for line in new_all:
+        k = _replacement_key(line)
+        if k is not None:
+            new_key_count[k] = new_key_count.get(k, 0) + 1
+
+    positional: list[int] = []
+    for i in deleted:
+        k = orig_keys[i]
+        if k is not None:
+            # Keyed deletion: require a unique shared identity on both sides.
+            if orig_key_count.get(k, 0) == 1 and new_key_count.get(k, 0) == 1:
+                continue
+            return False
+        positional.append(i)
+
+    if not positional:
+        return True
+
+    # Positional fallback capacity comes from identity-free new lines on
+    # each side; deletions must form a contiguous run against that boundary.
+    front_cap = sum(1 for line in new_before if _replacement_key(line) is None)
+    back_cap = sum(1 for line in new_after if _replacement_key(line) is None)
+
+    front_run = 0
+    while front_run < n and front_run in deleted_set:
+        front_run += 1
+    back_run = 0
+    while back_run < n and (n - 1 - back_run) in deleted_set:
+        back_run += 1
+    front_cover = min(front_run, front_cap)
+    back_cover = min(back_run, back_cap)
+
+    for i in positional:
+        if i < front_cover or i >= n - back_cover:
+            continue
+        return False
+    return True
+
+
+def _lcs_matched(
+    a: list[str],
+    b: list[str],
+) -> tuple[set[int], set[int]]:
+    """Longest-common-subsequence alignment of two line lists.
+
+    Returns ``(matched_a, matched_b)`` — the index sets paired by an LCS.
+    ``matched_a`` identifies the originals that survived; the unmatched
+    ``b`` indices are the merge's new lines. Order and multiplicity of
+    repeated lines are respected (this is a subsequence match, not a set).
+    """
+    la, lb = len(a), len(b)
+    if la == 0 or lb == 0:
+        return set(), set()
+    dp = [[0] * (lb + 1) for _ in range(la + 1)]
+    for i in range(la - 1, -1, -1):
+        for j in range(lb - 1, -1, -1):
+            if a[i] == b[j]:
+                dp[i][j] = dp[i + 1][j + 1] + 1
+            else:
+                dp[i][j] = max(dp[i + 1][j], dp[i][j + 1])
+    matched_a: set[int] = set()
+    matched_b: set[int] = set()
+    i = j = 0
+    while i < la and j < lb:
+        if a[i] == b[j]:
+            matched_a.add(i)
+            matched_b.add(j)
+            i += 1
+            j += 1
+        elif dp[i + 1][j] >= dp[i][j + 1]:
+            i += 1
+        else:
+            j += 1
+    return matched_a, matched_b
 
 
 def _real_lines(s: str) -> list[str]:
@@ -191,335 +466,6 @@ def _real_lines(s: str) -> list[str]:
         for ln in s.splitlines()
         if ln.strip() and not _is_marker_line(ln)
     ]
-
-
-def _parse_snippet_hunks(
-    snippet: str,
-    orig_list: list[str],
-) -> list[dict]:
-    """Split the snippet into marker-separated hunks and classify each
-    non-marker line within a hunk as either a context anchor (matches
-    an as-yet-unconsumed original line in forward order) or a new
-    line. Markers are PRESERVATION WILDCARDS — they do not carry any
-    payload and exist only to delimit hunks.
-
-    Each returned hunk is a dict with:
-
-      * ``lines``: list of ``{"kind": "context" | "new", "line": str,
-        "orig_idx": int | None}`` in snippet order.
-      * ``leading_marker``: True if the hunk was preceded by a marker.
-      * ``trailing_marker``: True if the hunk is followed by a marker
-        (or the snippet ends with the hunk's content followed by a
-        marker).
-    """
-    raw_lines = snippet.splitlines()
-    hunks: list[dict] = []
-    cursor = 0
-    in_hunk = False
-    prev_was_marker = False  # True only after an actual marker line.
-    current: dict = {
-        "lines": [],
-        "leading_marker": False,
-        "trailing_marker": False,
-    }
-
-    def _new_hunk() -> dict:
-        return {
-            "lines": [],
-            "leading_marker": False,
-            "trailing_marker": False,
-        }
-
-    for raw_line in raw_lines:
-        s = raw_line.strip()
-        if not s:
-            continue
-        if _is_marker_line(raw_line):
-            if in_hunk:
-                current["trailing_marker"] = True
-                hunks.append(current)
-                current = _new_hunk()
-                in_hunk = False
-            # Markers between hunks just separate them; we don't emit
-            # a separate hunk for an empty gap of consecutive markers.
-            prev_was_marker = True
-            continue
-
-        # Non-marker, non-blank line.
-        if not in_hunk:
-            current["leading_marker"] = prev_was_marker
-            in_hunk = True
-
-        match_idx = None
-        for i in range(cursor, len(orig_list)):
-            if orig_list[i] == s:
-                match_idx = i
-                break
-
-        if match_idx is not None:
-            current["lines"].append({
-                "kind": "context",
-                "line": s,
-                "orig_idx": match_idx,
-            })
-            cursor = match_idx + 1
-        else:
-            current["lines"].append({
-                "kind": "new",
-                "line": s,
-                "orig_idx": None,
-            })
-        prev_was_marker = False
-
-    if in_hunk:
-        hunks.append(current)
-
-    return hunks
-
-
-def _compute_expected_merged(
-    hunks: list[dict],
-    orig_list: list[str],
-) -> list[str] | None:
-    """Build the deterministic expected merged output from the parsed
-    hunks and the original lines. Returns ``None`` if any section
-    contains an ambiguous replacement pairing (the validator fails
-    closed rather than guess which original the author meant).
-
-    Algorithm:
-      1. Single-hunk snippets with only the signature as a context
-         anchor use position-top (signature + new + rest of body) or
-         position-bottom (full body + new) semantics.
-      2. Otherwise, walk hunks in order. Each hunk is sliced into
-         sections bounded by consecutive context anchors; the trailing
-         section runs from the last anchor to the next hunk's first
-         anchor (or end of original).
-      3. For each section:
-            * emit the section's new lines (in snippet order);
-            * emit any gap originals NOT covered by the new lines —
-              the first ``min(N_new, |gap|)`` originals are consumed by
-              the new lines, the rest are preserved.
-            * if the section ends at a context anchor, emit the anchor.
-            * if the section is the trailing section of a hunk with a
-              trailing marker, the preserved remainder is emitted too.
-    """
-    n_orig = len(orig_list)
-    if not hunks:
-        return list(orig_list)
-
-    # Single-hunk position-top / position-bottom: only the signature
-    # line is a context anchor, and there is exactly one marker that
-    # sits at the start or end of the snippet.
-    if len(hunks) == 1:
-        hunk = hunks[0]
-        context_lines = [ln for ln in hunk["lines"] if ln["kind"] == "context"]
-        new_lines = [ln for ln in hunk["lines"] if ln["kind"] == "new"]
-        if (
-            len(context_lines) == 1
-            and context_lines[0]["orig_idx"] == 0
-            and hunk["trailing_marker"]
-            and not hunk["leading_marker"]
-        ):
-            expected = [orig_list[0]]
-            for nl in new_lines:
-                expected.append(nl["line"])
-            expected.extend(orig_list[1:])
-            return expected
-        if (
-            len(context_lines) == 1
-            and context_lines[0]["orig_idx"] == 0
-            and hunk["leading_marker"]
-            and not hunk["trailing_marker"]
-        ):
-            expected = list(orig_list)
-            for nl in new_lines:
-                expected.append(nl["line"])
-            return expected
-
-    expected: list[str] = []
-    orig_idx = 0  # The next original index to consider.
-
-    for hunk_idx, hunk in enumerate(hunks):
-        if not hunk["lines"]:
-            # Empty hunk (e.g. two consecutive markers) — nothing to
-            # contribute. ``orig_idx`` is left untouched so the next
-            # non-empty hunk picks up from the same point.
-            continue
-
-        # Slice the hunk into sections bounded by consecutive context
-        # anchors. A section's "gap" is the original lines between the
-        # previous anchor (exclusive) and the next anchor (exclusive).
-        sections: list[dict] = []
-        prev_anchor = orig_idx - 1
-        sec_new: list[str] = []
-        for entry in hunk["lines"]:
-            if entry["kind"] == "context":
-                sections.append({
-                    "prev": prev_anchor,
-                    "next": entry["orig_idx"],
-                    "new": sec_new,
-                })
-                prev_anchor = entry["orig_idx"]
-                sec_new = []
-            else:
-                sec_new.append(entry["line"])
-
-        # Trailing section: from the last anchor to the next hunk's
-        # first context anchor (or end of original). ``region_end`` is
-        # exclusive. If the immediately following hunks have no
-        # context anchor (e.g. a pure-insertion hunk between two
-        # markers), keep scanning forward until we find one — the
-        # marker between them still delimits the region.
-        region_end = n_orig
-        for next_idx in range(hunk_idx + 1, len(hunks)):
-            next_hunk = hunks[next_idx]
-            next_ctx_lines = [
-                ln for ln in next_hunk["lines"] if ln["kind"] == "context"
-            ]
-            if next_ctx_lines:
-                region_end = next_ctx_lines[0]["orig_idx"]
-                break
-        sections.append({
-            "prev": prev_anchor,
-            "next": region_end,
-            "new": sec_new,
-            "is_trailing": True,
-        })
-
-        for sec_idx, sec in enumerate(sections):
-            prev = sec["prev"]
-            next_a = sec["next"]
-            new_lines = sec["new"]
-            is_trailing = sec.get("is_trailing", False)
-            is_first = sec_idx == 0
-
-            gap = orig_list[prev + 1:next_a]
-            n_new = len(new_lines)
-
-            # Ambiguous replacement-key guard: a snippet new line whose
-            # replacement key (assignment LHS, declaration name, flow
-            # statement kind) matches more than one original line in
-            # the local gap cannot be paired unambiguously. Fail closed.
-            for nl in new_lines:
-                key = _validator_replacement_key(nl)
-                if key is None:
-                    continue
-                matches = [
-                    ol for ol in gap if _validator_replacement_key(ol) == key
-                ]
-                if len(matches) > 1:
-                    return None
-
-            if n_new == 0:
-                # No new lines in this section — every gap original
-                # is preserved verbatim.
-                for ol in gap:
-                    expected.append(ol)
-            elif is_first:
-                # Leading new lines (those declared before the hunk's
-                # first context anchor) REPLACE every original in the
-                # gap. ``[X, B]`` against ``[A, A, B]`` therefore
-                # produces ``[X, B]``, not ``[X, A, B]`` — the two As
-                # are the "consumed" originals and X is the explicit
-                # replacement for the whole pre-B region.
-                for nl in new_lines:
-                    expected.append(nl)
-            elif is_trailing and not hunk["trailing_marker"]:
-                # Trailing section without a marker: every gap
-                # original is replaced.
-                for nl in new_lines:
-                    expected.append(nl)
-            else:
-                # In-between or trailing-marker section: only the
-                # first ``min(n_new, len(gap))`` originals are
-                # replaced; the remainder is preserved.
-                n_replaced = min(n_new, len(gap))
-                for nl in new_lines:
-                    expected.append(nl)
-                for ol in gap[n_replaced:]:
-                    expected.append(ol)
-
-            # Emit the anchor at the end of a non-trailing section.
-            if not is_trailing:
-                expected.append(orig_list[next_a])
-
-        # Advance ``orig_idx`` past this hunk's region so the next
-        # hunk's first section starts at the right place.
-        orig_idx = region_end
-
-    # Any originals not consumed by any hunk survive at the tail.
-    for i in range(orig_idx, n_orig):
-        expected.append(orig_list[i])
-
-    return expected
-
-
-def _validator_replacement_key(line: str) -> str | None:
-    """Extract a generic replacement identity for a stripped line.
-
-    The validator uses this to disambiguate which original line a
-    snippet new line is intended to replace when several originals
-    share the same key. Three identity kinds are recognised:
-
-      * assignment-like (``x = ...``, ``let x = ...``, ``self.x = ...``,
-        ``x: T = ...``) — key is the LHS;
-      * declaration-like (``def foo``, ``fn foo``, ``class Foo``,
-        ``struct Foo``, ``enum E``, ``trait T``, ``impl I``,
-        ``interface I``, ``protocol P``, ``module M``, ``object O``,
-        ``func foo``, ``fun foo``) — key is ``decl:<name>``;
-      * flow-statement kind (``return``, ``raise``, ``yield``,
-        ``throw``, ``panic!``, ``break``, ``continue``, ``pass``) —
-        key is ``flow:<kind>``.
-
-    Returns ``None`` for lines without an extractable identity. The
-    positional fallback in ``_compute_expected_merged`` then handles
-    them, which is correct for bare function calls like ``new()``.
-    """
-    import re as _re
-
-    s = line.strip()
-    if not s:
-        return None
-
-    # Assignment-like: find the first '=' that is not part of a
-    # comparison or compound-assignment opener.
-    i = 0
-    while i < len(s):
-        c = s[i]
-        if c == "=":
-            prev = s[i - 1] if i > 0 else ""
-            nxt = s[i + 1] if i + 1 < len(s) else ""
-            if prev in ("=", "!", "<", ">", ":") or nxt in ("=", ">"):
-                i += 1
-                continue
-            lhs_end = i
-            if lhs_end > 0 and s[lhs_end - 1] in "+-*/%|&^":
-                lhs_end -= 1
-            lhs = s[:lhs_end].strip()
-            if lhs:
-                return f"assign:{lhs}"
-            return None
-        i += 1
-
-    # Declaration-like: def/fn/func/fun/class/struct/enum/trait/
-    # interface/protocol/module/object/impl followed by a name.
-    m = _re.match(
-        r"\b(?:def|fn|func|fun|class|struct|enum|trait|interface|"
-        r"protocol|module|object|impl)\s+([A-Za-z_]\w*)",
-        s,
-    )
-    if m:
-        return f"decl:{m.group(1)}"
-
-    # Flow-statement kind.
-    m = _re.match(
-        r"\b(return|raise|yield|throw|panic!|break|continue|pass)\b",
-        s,
-    )
-    if m:
-        return f"flow:{m.group(1)}"
-
-    return None
 
 
 # ---------------------------------------------------------------------------

@@ -542,3 +542,202 @@ def test_new_line_reorder_within_preserved_block_rejected():
         f"Reorder-among-bystanders scored {score:.3f}, "
         f"expected < {PASS_THRESHOLD}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Fix-round-2 counterexamples — a snippet-new line BEFORE a preservation
+# marker is a pure insertion, not a forced replacement of the following
+# original. See ``attempt_2_blocker`` in the work item and the marker
+# semantics in ``text_match.deterministic_edit``.
+# ---------------------------------------------------------------------------
+
+
+def test_faithful_new_before_marker_insertion_accepted():
+    """A snippet-new line placed BEFORE a preservation marker is an
+    INSERTION: the marker-covered originals that follow are preserved by
+    default, not consumed by the new line. ``deterministic_edit`` returns
+    exactly this faithful merge — inserting ``z = 99`` before the gap and
+    keeping BOTH ``b = 2`` and ``c = 3``.
+
+    The previous validator scored this 0.0 because it forced ``z`` to
+    consume ``b``. This regression pins the corrected insertion semantics
+    and MUST be accepted (score >= 0.85)."""
+    original = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+    snippet = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "# ... existing code ...\n"
+        "    return a\n"
+    )
+    # Faithful merge: z inserted before the preserved gap; b and c survive.
+    merged = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score >= PASS_THRESHOLD, (
+        f"Faithful new-before-marker insertion scored {score:.3f}, "
+        f"expected >= {PASS_THRESHOLD}"
+    )
+
+
+def test_new_before_marker_mismatched_key_deletion_rejected():
+    """The same shape as the faithful insertion, but the merge DELETES an
+    unrelated marker-covered original (``b = 2``) while inserting
+    ``z = 99``. The assignment key ``z`` does not justify deleting the
+    assignment key ``b`` (different stable identities), and positional
+    proximity must not override that mismatch. MUST be rejected."""
+    original = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+    snippet = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "# ... existing code ...\n"
+        "    return a\n"
+    )
+    # Corrupt: b = 2 deleted even though z's key does not justify it.
+    merged = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Mismatched-key deletion scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_new_after_marker_insertion_accepted():
+    """Symmetric to the new-before-marker case: a snippet-new line placed
+    AFTER a preservation marker is a bottom insertion. The marker-covered
+    originals before it are preserved; the new line lands after them."""
+    original = (
+        "def g():\n"
+        "    p = 1\n"
+        "    q = 2\n"
+        "    return p\n"
+    )
+    snippet = (
+        "def g():\n"
+        "    p = 1\n"
+        "# ... existing code ...\n"
+        "    r = 3\n"
+        "    return p\n"
+    )
+    merged = (
+        "def g():\n"
+        "    p = 1\n"
+        "    q = 2\n"
+        "    r = 3\n"
+        "    return p\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score >= PASS_THRESHOLD, (
+        f"Faithful new-after-marker insertion scored {score:.3f}, "
+        f"expected >= {PASS_THRESHOLD}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Parity matrix: every non-None deterministic_edit result is accepted.
+# ---------------------------------------------------------------------------
+#
+# ``deterministic_edit`` is the established marker-semantics reference. The
+# validator runs after model fallback but must never reject an output the
+# deterministic engine itself produced. Each row below exercises one marker
+# shape; the test asserts (a) deterministic_edit returns a concrete merge
+# and (b) the validator accepts that exact merge.
+
+
+_PARITY_MATRIX = [
+    # (label, original, snippet)
+    (
+        "new-before-marker",
+        "def foo():\n    a = 1\n    b = 2\n    c = 3\n    return a\n",
+        "def foo():\n    a = 1\n    z = 99\n# ... existing code ...\n    return a\n",
+    ),
+    (
+        "new-after-marker",
+        "def g():\n    p = 1\n    q = 2\n    return p\n",
+        "def g():\n    p = 1\n# ... existing code ...\n    r = 3\n    return p\n",
+    ),
+    (
+        "marker-only-preservation",
+        "def h():\n    a = 1\n    b = 2\n    return a\n",
+        "def h():\n    a = 1\n# ... existing code ...\n    return a\n",
+    ),
+    (
+        "no-marker-replacement",
+        "def k():\n    x = 1\n    return x\n",
+        "def k():\n    x = 1\n    return x + 1\n",
+    ),
+    (
+        "top-insertion",
+        "def t():\n    first()\n    second()\n",
+        "def t():\n    added()\n# ... existing code ...\n",
+    ),
+    (
+        "bottom-insertion",
+        "def b():\n    one()\n    two()\n",
+        "def b():\n# ... existing code ...\n    appended()\n",
+    ),
+    (
+        "marker-key-replacement",
+        "def m(self):\n    self._data = {}\n    self.count = 0\n    return self\n",
+        "def m(self):\n    self._data = OrderedDict()\n"
+        "# ... existing code ...\n    return self\n",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "label,original,snippet",
+    _PARITY_MATRIX,
+    ids=[row[0] for row in _PARITY_MATRIX],
+)
+def test_deterministic_edit_parity_accepted(
+    label: str, original: str, snippet: str
+):
+    """Every concrete ``deterministic_edit`` output is accepted by the
+    validator. This is the anti-drift guard: the validator's marker
+    semantics must not diverge from the engine that produces real
+    faithful merges."""
+    from fastedit.inference.text_match import deterministic_edit
+
+    produced = deterministic_edit(original, snippet)
+    assert produced is not None, (
+        f"[{label}] deterministic_edit returned None; matrix row must "
+        f"produce a concrete merge"
+    )
+
+    score = _score(original, produced, snippet)
+    assert score >= PASS_THRESHOLD, (
+        f"[{label}] validator rejected a faithful deterministic_edit "
+        f"output (score {score:.3f}); produced:\n{produced}"
+    )
