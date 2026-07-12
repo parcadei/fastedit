@@ -329,7 +329,7 @@
     "conventions": "CLAUDE.md: general solutions only, tests before implementation, follow existing patterns, run lint before commit.",
     "constraints": [
       "Editing worker must use an Orca-created isolated worktree.",
-      "Worker must use MiniMax-M3 through OpenCode as explicitly interpreted from the requested Luna Max worker.",
+      "ATT-001 and ATT-002 used MiniMax-M3 through OpenCode; ATT-003 and any later worker must use Claude's latest Opus alias with max effort and permission bypass per the user's override.",
       "Each worker may write only its assigned REP-W-NNN.json outside its worktree.",
       "Orchestrator owns contract, integration, validation, release record, and ledger state."
     ],
@@ -374,6 +374,17 @@
         "orca_dispatch_status": "completed"
       }
     ],
+    "next_worker_launch": {
+      "attempt": "ATT-003",
+      "worker": "W-003",
+      "agent": "claude",
+      "requested_model": "Claude Opus 4.8",
+      "cli_model": "opus",
+      "effort": "max",
+      "permission_mode": "bypassPermissions",
+      "startup_command": "claude --model opus --effort max --dangerously-skip-permissions",
+      "source": "User override after ATT-002 completion; replaces MiniMax-M3 for all subsequent workers."
+    },
     "attempt_validations": [
       {
         "attempt": "ATT-001",
@@ -456,6 +467,14 @@
           "kind": "fix",
           "worker_result": "partial",
           "validation_result": "failed"
+        },
+        {
+          "id": "ATT-003",
+          "worker": "W-003",
+          "report": "REP-W-003",
+          "kind": "fix",
+          "worker_result": "pending",
+          "validation_result": null
         }
       ],
       "report": {
