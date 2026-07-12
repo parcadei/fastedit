@@ -327,7 +327,24 @@
       "No readiness.sh",
       "No installed Luna-named Orca agent; MiniMax-M3 is available through OpenCode and selected as the matching worker provider.",
       "The unqualified uv run pytest command selects global pytest; validation must use uv run --with pytest python -m pytest."
-    ]
+    ],
+    "worker_transport": {
+      "kind": "orca_supervised_dispatch",
+      "repo_id": "db7813d2-cc8f-4711-91b9-747ef137e8c2",
+      "worktree_base": "autonomous/fix-hallucination-validator",
+      "lineage": "standalone isolated worker checkout",
+      "agent": "opencode",
+      "model": "minimax-coding-plan/MiniMax-M3",
+      "startup_command": "opencode -m minimax-coding-plan/MiniMax-M3 --agent build --auto",
+      "report_path": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-001.json"
+    },
+    "prepared_checks": {
+      "focused": "uv run --with pytest python -m pytest -q <worker-selected regression test>",
+      "reachable_suite": "uv run --with pytest python -m pytest -q with the four recorded optional-MLX baseline cases excluded only for delta attribution",
+      "full_suite": "uv run --with pytest python -m pytest -q and compare failure set to the recorded baseline",
+      "changed_file_lint": "uv run --with ruff ruff check <changed files>",
+      "diff_integrity": "git diff --check"
+    }
   },
   "assertions": [
     {
