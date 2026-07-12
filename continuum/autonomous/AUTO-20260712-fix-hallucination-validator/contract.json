@@ -372,6 +372,25 @@
         "orca_dispatch_id": "ctx_ba335cda62cd",
         "orca_terminal_handle": "term_a6a403a5-342a-4850-8846-f0a94a0fa556",
         "orca_dispatch_status": "completed"
+      },
+      {
+        "attempt": "ATT-003",
+        "worker": "W-003",
+        "kind": "orca_supervised_dispatch",
+        "agent": "claude",
+        "requested_model": "Claude Opus 4.8",
+        "cli_model": "opus",
+        "effort": "max",
+        "permission_mode": "bypassPermissions",
+        "startup_command": "claude --model opus --effort max --dangerously-skip-permissions",
+        "report_path": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-003.json",
+        "worktree_id": "db7813d2-cc8f-4711-91b9-747ef137e8c2::/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+        "worktree_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+        "worktree_branch": "parcadei/fastedit-hallucination-worker-w001",
+        "orca_task_id": "task_bd14761908f9",
+        "orca_dispatch_id": "ctx_0af6d43cb0e4",
+        "orca_terminal_handle": "term_a7bc8302-2c09-4692-8f8f-33b295172198",
+        "orca_dispatch_status": "dispatched"
       }
     ],
     "next_worker_launch": {
