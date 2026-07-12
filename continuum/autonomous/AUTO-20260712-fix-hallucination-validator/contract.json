@@ -399,7 +399,7 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "ready",
+      "stage": "running",
       "depends": [],
       "attempts": [
         {
@@ -409,6 +409,14 @@
           "kind": "initial",
           "worker_result": "partial",
           "validation_result": "failed"
+        },
+        {
+          "id": "ATT-002",
+          "worker": "W-002",
+          "report": "REP-W-002",
+          "kind": "fix",
+          "worker_result": "pending",
+          "validation_result": null
         }
       ],
       "report": {
