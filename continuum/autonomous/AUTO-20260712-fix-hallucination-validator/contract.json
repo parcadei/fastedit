@@ -211,9 +211,10 @@
     },
     "max_fix_rounds": {
       "default": 2,
+      "resolved": 3,
       "applies_when": "blocking patch validation",
       "override_point": "project.autonomous.profiles.code_patch.max_fix_rounds",
-      "source": "task-modes.md policy-defaults v4.4, 2026-07-11"
+      "source": "DEC-001: user explicitly authorized one additional fix round after ATT-003 non-convergence, 2026-07-12"
     },
     "total_cost_ceiling": {
       "default": {
@@ -315,7 +316,24 @@
       "routing": "add_assertion"
     }
   ],
-  "decisions_log": [],
+  "decisions_log": [
+    {
+      "id": "DEC-001",
+      "question": "Authorize one fix round beyond the default two-round recovery limit?",
+      "options": [
+        "stop at non-convergence",
+        "authorize one additional Claude Opus fix round"
+      ],
+      "selected": "authorize one additional Claude Opus fix round",
+      "rationale": "The user explicitly replied 'authorised' after reviewing the independent wrong-side marker finding and the exhausted-depth gate.",
+      "timestamp": "2026-07-12T16:33:16Z",
+      "affects": [
+        "VAL-001",
+        "WI-001",
+        "ATT-004"
+      ]
+    }
+  ],
   "environment": {
     "branch": "autonomous/fix-hallucination-validator",
     "base_commit": "c193761bfa14670384f4be05bdcb4700113700bc",
@@ -394,15 +412,15 @@
       }
     ],
     "next_worker_launch": {
-      "attempt": "ATT-003",
-      "worker": "W-003",
+      "attempt": "ATT-004",
+      "worker": "W-004",
       "agent": "claude",
       "requested_model": "Claude Opus 4.8",
       "cli_model": "opus",
       "effort": "max",
       "permission_mode": "bypassPermissions",
       "startup_command": "claude --model opus --effort max --dangerously-skip-permissions",
-      "source": "User override after ATT-002 completion; replaces MiniMax-M3 for all subsequent workers."
+      "source": "User override after ATT-002 completion; replaces MiniMax-M3 for all subsequent workers. DEC-001 authorizes this additional round."
     },
     "attempt_validations": [
       {
@@ -455,9 +473,9 @@
       "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
       "milestone": null,
       "scope": "pre_merge",
-      "status": "blocked",
-      "validation_result": "failed",
-      "validation_reason": "ATT-003 false-accepts snippet-new lines moved across marker-preserved gaps. The two automatic fix rounds are exhausted; continuing requires a reshape or explicit depth override.",
+      "status": "ready",
+      "validation_result": null,
+      "validation_reason": "DEC-001 authorized ATT-004. Revalidation must add and pass negative before-marker/after-marker side-placement oracles before this assertion can pass.",
       "depends": [],
       "severity": "blocker",
       "failure_policy": "fix",
@@ -479,7 +497,7 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "blocked",
+      "stage": "ready",
       "depends": [],
       "attempts": [
         {
@@ -505,6 +523,14 @@
           "kind": "fix",
           "worker_result": "partial",
           "validation_result": "failed"
+        },
+        {
+          "id": "ATT-004",
+          "worker": "W-004",
+          "report": "REP-W-004",
+          "kind": "fix",
+          "worker_result": "pending",
+          "validation_result": null
         }
       ],
       "report": {
