@@ -1,0 +1,138 @@
+{
+  "role": "implement",
+  "profile": {
+    "id": "code_patch",
+    "version": "v4",
+    "dod_profile": "patch",
+    "active_axis_gates": [
+      "regression-first",
+      "marker-semantics-parity",
+      "occurrence-order-and-multiplicity",
+      "changed-file-lint"
+    ]
+  },
+  "work_item": {
+    "id": "WI-001",
+    "attempt": "ATT-003",
+    "worker": "W-003",
+    "assertion": "VAL-001",
+    "stage": "ready",
+    "depends": []
+  },
+  "assertion": {
+    "id": "VAL-001",
+    "type": "property",
+    "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
+    "severity": "blocker",
+    "evidence_required": {
+      "class": "property_execution",
+      "profile": "validator-regression-matrix"
+    }
+  },
+  "context": {
+    "conventions_delta": "Read and follow CLAUDE.md completely. This is the second and final fix round. Add failing regressions before changing implementation. Do not weaken, delete, skip, xfail, or rewrite an existing oracle merely to pass.",
+    "structure": "Work in the existing isolated branch at e79df43. Two MiniMax attempts are rejected. The current +400-line expected-output synthesizer passes issue #3 but duplicates and drifts from src/fastedit/inference/text_match.py marker semantics. Replace or aggressively simplify it; do not patch only the one failing branch.",
+    "environment": {
+      "branch": "parcadei/fastedit-hallucination-worker-w001",
+      "worktree": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "package_manager": "uv 0.7.17",
+      "baseline": "864 passed, 24 skipped, 4 unrelated optional-MLX failures before task changes; repository-wide Ruff has unrelated debt, so changed-file Ruff must be clean"
+    },
+    "interfaces": [
+      {
+        "kind": "function",
+        "name": "_check_hallucinations",
+        "compatibility": "Signature and float score contract must remain backward-compatible. Downstream retry at 0.85 and rejection at 0.5 remain unchanged."
+      }
+    ],
+    "issue_3_reproduction": {
+      "original": "def greet(name): / x = 1 / return hi + name",
+      "snippet": "def greet(name): / x = 1 / return f-hello / marker",
+      "faithful_merged": "def greet(name): / x = 1 / return f-hello",
+      "required_score": "at least 0.85",
+      "note": "This exact case scores 1.0 on e79df43 and must stay accepted."
+    },
+    "attempt_2_blocker": {
+      "case": "new line before preservation marker",
+      "original": "def foo(): / a = 1 / b = 2 / c = 3 / return a",
+      "snippet": "def foo(): / a = 1 / z = 99 / marker / return a",
+      "faithful_merged": "def foo(): / a = 1 / z = 99 / b = 2 / c = 3 / return a",
+      "existing_semantics": "deterministic_edit returns the faithful merge above: a new line before a marker is inserted before the preserved gap; b and c both survive.",
+      "observed_on_e79df43": "_check_hallucinations returns 0.0 because it requires z to consume b.",
+      "required": "Accept the faithful output. Also reject z/c/return with b deleted: assignment key z does not justify deleting assignment key b."
+    },
+    "prior_required_cases": [
+      "Accept the exact issue #3 faithful return replacement.",
+      "Accept a marker-local bare-call replacement old() to new() while preserving the following must_survive() bystander; reject the same output if must_survive() is also deleted.",
+      "Accept a top insertion where a trailing marker preserves the omitted original body.",
+      "Reject reordered snippet-new lines even when the multiset matches.",
+      "Reject unrelated deletion, required-snippet omission, unsupported duplication, invention, preserved-line reorder, and marker leak.",
+      "Handle repeated identical lines by occurrence, order, and multiplicity rather than sets."
+    ],
+    "design_constraints": [
+      "Do not infer one mandatory expected output when marker syntax permits both preservation and a locally justified replacement. Validate invariants or an explicit set of allowed local outcomes instead.",
+      "Marker-covered originals are preserved by default. A snippet-new line before or after a marker may be a pure insertion; do not require it to consume an original.",
+      "Any original occurrence actually deleted must have a local one-to-one justification from snippet intent. Prefer a unique shared assignment/declaration/flow identity. A positional fallback for identity-free lines may justify only the nearest occurrence on the marker-adjacent side, never an arbitrary bystander.",
+      "If both lines expose stable but different identities, positional proximity must not override that mismatch.",
+      "Every snippet-new occurrence must land in merged output in declared relative order and multiplicity. Every merged insertion must be supported by snippet multiplicity.",
+      "All unpaired original occurrences must survive in relative order and multiplicity. Reject invention, unsupported duplication, reordering, and marker leakage.",
+      "Study deterministic_edit and its marker tests as the semantic reference. Reuse a small existing helper such as text_match._replacement_key where appropriate instead of maintaining a second language-heuristic implementation.",
+      "The validator runs after model fallback, including ambiguous cases where deterministic_edit returned None, so calling deterministic_edit and requiring exact equality is not sufficient by itself.",
+      "Keep the implementation general across supported languages, dependency-free, and substantially smaller or better factored than e79df43's duplicated expected-output engine."
+    ],
+    "required_regression_additions": [
+      "Faithful new-before-marker insertion from attempt_2_blocker is accepted.",
+      "The same shape with assignment-key-mismatched deletion is rejected.",
+      "A representative parity matrix asserts every non-None deterministic_edit result is accepted, covering new-before-marker, new-after-marker, marker-only preservation, no-marker replacement, top insertion, and bottom insertion.",
+      "All 20 existing tests/test_hallucination_validation.py cases remain enabled and pass, unless a prior test directly contradicts text_match's established semantics; if so, report the contradiction rather than silently editing it."
+    ],
+    "anti_gaming": [
+      "Demonstrate the new faithful insertion test fails on e79df43 before implementation.",
+      "Mutation-check at least one guard by temporarily disabling or bypassing it and showing its negative regression fails, then restore the guard.",
+      "Run an independent small generated matrix of insertion, replacement, deletion, duplicate, reorder, invention, and marker-leak variants; report exact counts."
+    ],
+    "report_schema": {
+      "id": "Must be REP-W-003.",
+      "worker": "Must be W-003.",
+      "worker_result": "Must be exactly success, partial, or blocked.",
+      "design_decision": "Boolean.",
+      "minimalism_descent": "String.",
+      "tests": "Object with added array, command, exit_code, and anti_gaming.",
+      "checks": "Array of objects with kind, command, exit_code, and observed. Never record exit_code 0 for a command that reported test failures.",
+      "out_of_bounds": "Array.",
+      "interfaces_changed": "Array.",
+      "other_arrays": "generated_artifacts, corrections, discoveries, issues, conventions must be arrays."
+    }
+  },
+  "bounds": {
+    "files": [
+      "src/fastedit/inference/chunked_merge.py",
+      "src/fastedit/inference/text_match.py",
+      "tests/test_hallucination_validation.py"
+    ],
+    "worktree": {
+      "required": true,
+      "expected_branch": "parcadei/fastedit-hallucination-worker-w001",
+      "expected_path": "/Users/cosimo/orca/workspaces/fastedit/fastedit-hallucination-worker-w001",
+      "verified": true
+    },
+    "focused_test_command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py tests/test_text_match.py",
+    "full_test_command": "uv run --with pytest python -m pytest -q",
+    "changed_file_lint": "uv run --with ruff ruff check <every changed Python file>",
+    "tdd": true,
+    "commit_after": true,
+    "forbidden": [
+      "dependency additions or lockfile changes",
+      "public API changes",
+      "tldr or tree-sitter changes",
+      "unrelated baseline cleanup",
+      "editing continuum/autonomous or contract.json in the worker worktree",
+      "pushing, publishing, tagging, deploying, or opening a pull request"
+    ]
+  },
+  "authority": {
+    "autonomy_level": "execute_with_gates",
+    "deploy_authorized": false
+  },
+  "output": "/Users/cosimo/Desktop/fasteditwork/fastedit/continuum/autonomous/AUTO-20260712-fix-hallucination-validator/reports/REP-W-003.json"
+}
