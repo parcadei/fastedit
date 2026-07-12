@@ -1,0 +1,83 @@
+{
+  "id": "REP-W-003",
+  "worker": "W-003",
+  "worker_result": "success",
+  "design_decision": true,
+  "minimalism_descent": "Replaced the ~400-line expected-output synthesizer (_parse_snippet_hunks + _compute_expected_merged + _validator_replacement_key) with 8 small single-purpose functions (largest ~36 lines: _check_hallucinations, _classify_snippet, _merge_is_faithful, _build_segments, _segment_is_faithful, _deletions_justified, _lcs_matched, _real_lines). Instead of synthesizing one mandatory merged output and requiring exact equality, the validator forward-scans the snippet into context anchors + new lines + markers, partitions original and merge into aligned pre/mid/post segments, and checks invariants per segment (new lines land in declared order/multiplicity; survivors keep order/multiplicity via LCS; marker-protected deletions need a unique shared _replacement_key identity or bounded positional adjacency; no-marker gaps are replacement zones). Reuses text_match._replacement_key rather than a second language heuristic. Net -54 lines in chunked_merge.py with no monolithic 175-line section.",
+  "tests": {
+    "added": [
+      "tests/test_hallucination_validation.py::test_faithful_new_before_marker_insertion_accepted",
+      "tests/test_hallucination_validation.py::test_new_before_marker_mismatched_key_deletion_rejected",
+      "tests/test_hallucination_validation.py::test_new_after_marker_insertion_accepted",
+      "tests/test_hallucination_validation.py::test_deterministic_edit_parity_accepted[new-before-marker]",
+      "tests/test_hallucination_validation.py::test_deterministic_edit_parity_accepted[new-after-marker]",
+      "tests/test_hallucination_validation.py::test_deterministic_edit_parity_accepted[marker-only-preservation]",
+      "tests/test_hallucination_validation.py::test_deterministic_edit_parity_accepted[no-marker-replacement]",
+      "tests/test_hallucination_validation.py::test_deterministic_edit_parity_accepted[top-insertion]",
+      "tests/test_hallucination_validation.py::test_deterministic_edit_parity_accepted[bottom-insertion]",
+      "tests/test_hallucination_validation.py::test_deterministic_edit_parity_accepted[marker-key-replacement]"
+    ],
+    "command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py tests/test_text_match.py",
+    "exit_code": 0,
+    "anti_gaming": "1) Regression-first RED: before implementation, on e79df43, test_faithful_new_before_marker_insertion_accepted fails (score 0.0), and the mismatch + parity[new-before-marker] cases fail too (pytest exit 1) — proving the new faithful-insertion test genuinely fails pre-fix and that e79df43 also FALSE-ACCEPTED z-deletes-b at 1.0. 2) Mutation check: bypassing the keyed-mismatch deletion guard (return False -> continue) makes test_new_before_marker_mismatched_key_deletion_rejected fail (score 1.0); guard restored and verified green. 3) Independent generated matrix (scratchpad/matrix.py): 37 checks across 5 marker-shape bases -> 5 faithful deterministic_edit outputs accepted, 2 allowed alternative local outcomes accepted, and 29 corrupt variants rejected (5 delete, 5 dup, 4 reorder, 5 invent, 5 leak, 5 omit; 1 reorder skipped for lack of two non-anchor preserved originals). All behaved as expected."
+  },
+  "checks": [
+    {
+      "kind": "regression-first-red",
+      "command": "git stash-free run on e79df43: uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py::test_faithful_new_before_marker_insertion_accepted tests/test_hallucination_validation.py::test_new_before_marker_mismatched_key_deletion_rejected 'tests/test_hallucination_validation.py::test_deterministic_edit_parity_accepted'",
+      "exit_code": 1,
+      "observed": "3 failed, 7 passed. Faithful new-before-marker insertion scored 0.0 (rejected); mismatched-key deletion scored 1.0 (false-accepted); parity[new-before-marker] scored 0.0. Confirms the added regressions fail on the pre-fix HEAD."
+    },
+    {
+      "kind": "focused-tests",
+      "command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py tests/test_text_match.py",
+      "exit_code": 0,
+      "observed": "111 passed. All 20 pre-existing validator cases plus 10 new cases pass; text_match semantics unaffected."
+    },
+    {
+      "kind": "marker-semantics-parity",
+      "command": "uv run python scratchpad/matrix.py (independent generated matrix) + parametrized test_deterministic_edit_parity_accepted",
+      "exit_code": 0,
+      "observed": "Every non-None deterministic_edit output accepted across new-before/after-marker, marker-only preservation, no-marker replacement, top/bottom insertion, marker key-replacement. Matrix: 37 checks, 7 accept / 29 reject / 1 skip, all as expected."
+    },
+    {
+      "kind": "mutation-guard",
+      "command": "temporarily bypass keyed-mismatch guard, then: uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py::test_new_before_marker_mismatched_key_deletion_rejected",
+      "exit_code": 1,
+      "observed": "With the guard bypassed the mismatch regression fails (score 1.000, expected < 0.85), proving the guard is load-bearing. Guard restored; test re-passes (exit 0)."
+    },
+    {
+      "kind": "full-suite",
+      "command": "uv run --with pytest python -m pytest -q",
+      "exit_code": 1,
+      "observed": "4 failed, 894 passed, 24 skipped. All 4 failures are the pre-existing, unrelated optional-MLX ModuleNotFoundError('mlx') in tests/test_cli.py (TestCLIBatchEdit/TestCLIMultiEdit json paths), matching the documented baseline. Zero new failures introduced; passed count rose from 864 baseline with the added regressions; skipped unchanged at 24."
+    },
+    {
+      "kind": "changed-file-lint",
+      "command": "uv run --with ruff ruff check src/fastedit/inference/chunked_merge.py tests/test_hallucination_validation.py",
+      "exit_code": 0,
+      "observed": "All checks passed! on every changed Python file."
+    }
+  ],
+  "out_of_bounds": [],
+  "interfaces_changed": [],
+  "generated_artifacts": [
+    "Commit 0039c6d on branch parcadei/fastedit-hallucination-worker-w001: 'edit: invariant hallucination validator aligned to marker semantics'",
+    "scratchpad/matrix.py (independent generated validator matrix; 37 checks; ephemeral evidence)"
+  ],
+  "corrections": [
+    "No existing oracle was weakened, deleted, skipped, xfail'd, or rewritten. All 20 prior tests/test_hallucination_validation.py cases remain enabled and pass unchanged; only additive test functions were appended."
+  ],
+  "discoveries": [
+    "e79df43 had two defects on the new-before-marker shape, not one: it rejected the faithful insertion (0.0) AND false-accepted the z-deletes-b variant (1.0), because its synthesizer forced the new line to consume one gap original. Both are now correct (accept faithful, reject mismatch).",
+    "The invariant validator intentionally does not pin a marker-inserted new line's exact position relative to surviving originals; it enforces only new-vs-new order, preserved-vs-preserved order, multiplicity, and justified deletions. This surfaced while building the generated matrix (swapping a new line past a survivor inside a marker segment is an allowed placement variant, so the matrix's reorder operator was retargeted to swap two originals, which the validator correctly rejects). This matches the design mandate to validate an allowed set of local outcomes rather than one mandatory merge.",
+    "text_match._replacement_key (assignment-LHS only) is exactly the identity deterministic_edit uses for its bug-3 gap-line skip, so reusing it (instead of the removed assign+decl+flow _validator_replacement_key) keeps the validator in parity with the engine and satisfies the no-second-heuristic constraint."
+  ],
+  "issues": [
+    "Pre-existing/unrelated: 4 optional-MLX failures in tests/test_cli.py (ModuleNotFoundError: No module named 'mlx') persist because the mlx backend is not installed in this environment. They are outside this work item's scope and match the documented baseline."
+  ],
+  "conventions": [
+    "Followed CLAUDE.md 'No Hardcoding': the validator is fully general across the 16 supported languages and dependency-free — no per-framework/per-language branches; identity resolution flows through the shared _replacement_key helper and the marker tokens, not if/elif on language.",
+    "TDD: failing regressions were added and shown RED on e79df43 before any implementation change."
+  ]
+}

@@ -390,7 +390,7 @@
         "orca_task_id": "task_bd14761908f9",
         "orca_dispatch_id": "ctx_0af6d43cb0e4",
         "orca_terminal_handle": "term_a7bc8302-2c09-4692-8f8f-33b295172198",
-        "orca_dispatch_status": "dispatched"
+        "orca_dispatch_status": "completed"
       }
     ],
     "next_worker_launch": {
@@ -427,6 +427,17 @@
           "REP-W-002 identifies its worker as W-001 instead of W-002 and records exit_code 0 for a full-suite observation containing four failures, so its report provenance and check result are internally inconsistent."
         ],
         "evidence": "Independent replay against commit e79df43: original [def foo, a=1, b=2, c=3, return a] plus snippet [def foo, a=1, z=99, marker, return a] yields deterministic_edit output [def foo, a=1, z=99, b=2, c=3, return a], but _check_hallucinations returns 0.0. The exact issue #3 reproduction returns 1.0, so the attempt is relevant but not safely integrable."
+      },
+      {
+        "attempt": "ATT-003",
+        "result": "failed",
+        "report_schema_valid": true,
+        "blocking_findings": [
+          "The invariant validator does not enforce a marker-inserted line's declared side relative to preserved originals, contradicting deterministic_edit's before-marker-before-gap and after-marker-after-gap semantics.",
+          "A new-after-marker line moved before the preserved gap scores 1.0; the symmetric new-before-marker line moved after the preserved gap also scores 1.0.",
+          "The same wrong-side false acceptance occurs for identity-free call lines, so it is not limited to assignment-key behavior."
+        ],
+        "evidence": "Independent execution against commit 0039c6d produced score 1.0 for three corrupt wrong-side cases: assignment after-marker moved before q=2, assignment before-marker moved after b=2/c=3, and bare-call before-marker moved after old()/keep(). Focused validator/text_match tests still pass 111/111 and changed-file Ruff passes, proving the regression is a missing oracle rather than an existing-suite failure."
       }
     ],
     "prepared_checks": {
@@ -492,8 +503,8 @@
           "worker": "W-003",
           "report": "REP-W-003",
           "kind": "fix",
-          "worker_result": "pending",
-          "validation_result": null
+          "worker_result": "partial",
+          "validation_result": "failed"
         }
       ],
       "report": {
