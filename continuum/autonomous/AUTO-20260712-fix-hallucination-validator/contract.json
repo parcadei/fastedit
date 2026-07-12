@@ -427,7 +427,7 @@
         "orca_task_id": "task_5b36476bd00d",
         "orca_dispatch_id": "ctx_c8150410958f",
         "orca_terminal_handle": "term_42786b5d-82df-4882-84c0-40953f75e254",
-        "orca_dispatch_status": "dispatched",
+        "orca_dispatch_status": "completed",
         "authorization": "DEC-001"
       }
     ],
@@ -440,7 +440,8 @@
       "effort": "max",
       "permission_mode": "bypassPermissions",
       "startup_command": "claude --model opus --effort max --dangerously-skip-permissions",
-      "source": "User override after ATT-002 completion; replaces MiniMax-M3 for all subsequent workers. DEC-001 authorizes this additional round."
+      "source": "User override after ATT-002 completion; replaces MiniMax-M3 for all subsequent workers. DEC-001 authorizes this additional round.",
+      "status": "completed"
     },
     "attempt_validations": [
       {
@@ -476,8 +477,33 @@
           "The same wrong-side false acceptance occurs for identity-free call lines, so it is not limited to assignment-key behavior."
         ],
         "evidence": "Independent execution against commit 0039c6d produced score 1.0 for three corrupt wrong-side cases: assignment after-marker moved before q=2, assignment before-marker moved after b=2/c=3, and bare-call before-marker moved after old()/keep(). Focused validator/text_match tests still pass 111/111 and changed-file Ruff passes, proving the regression is a missing oracle rather than an existing-suite failure."
+      },
+      {
+        "attempt": "ATT-004",
+        "result": "passed",
+        "report_schema_valid": false,
+        "report_findings": [
+          "REP-W-004 omits canonical worker-report identity and result fields including task, work_item, assertion, implemented, remaining, blocked_reason, alternatives_considered, and files_changed.",
+          "REP-W-004 uses string rows where the v4.1 schema requires structured test, anti-gaming, correction, discovery, issue, and generated-artifact records."
+        ],
+        "product_findings": [],
+        "evidence": "Independent candidate validation on 10b688f: 119 focused tests passed; changed-file Ruff and diff integrity passed; full suite produced 902 passed, 24 skipped, and only the same four optional-MLX failures; all three wrong-side cases scored 0.0; an independently specified exhaustive local oracle ran 1,364 insertion/replacement/deletion/duplicate/invention sequences with zero mismatches. The cached FastEdit mlx-8bit 1.7B model was then loaded through uv's locked mlx extra and run through chunked_merge on the exact issue shape: it produced the perfect merge in one call, legacy logic scored that output 0.0, candidate logic scored it 1.0, chunks_rejected was 0, and the edit was applied. Product evidence is accepted independently of the malformed worker report."
       }
     ],
+    "local_model_validation": {
+      "runtime": "uv run --extra mlx using the repository lock",
+      "model": "/Users/cosimo/.cache/fastedit/models/mlx-8bit (FastEdit 1.7B quantized local model)",
+      "scenario": "replace greet return line using the issue #3 body-only snippet and canonical existing-code marker through candidate chunked_merge",
+      "model_calls": 1,
+      "model_output": "def greet(name): / x = 1 / return f-hello",
+      "parse_valid": true,
+      "legacy_validator_score": 0.0,
+      "candidate_validator_score": 1.0,
+      "chunks_rejected": 0,
+      "edit_applied": true,
+      "exit_code": 0,
+      "non_blocking_warning": "mlx-lm warned that the cached tokenizer carries a Mistral regex pattern advisory; generation and parse validation succeeded."
+    },
     "prepared_checks": {
       "focused": "uv run --with pytest python -m pytest -q <worker-selected regression test>",
       "reachable_suite": "uv run --with pytest python -m pytest -q with the four recorded optional-MLX baseline cases excluded only for delta attribution",
@@ -517,7 +543,7 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "running",
+      "stage": "reported",
       "depends": [],
       "attempts": [
         {
@@ -549,8 +575,8 @@
           "worker": "W-004",
           "report": "REP-W-004",
           "kind": "fix",
-          "worker_result": "pending",
-          "validation_result": null
+          "worker_result": "success",
+          "validation_result": "passed"
         }
       ],
       "report": {

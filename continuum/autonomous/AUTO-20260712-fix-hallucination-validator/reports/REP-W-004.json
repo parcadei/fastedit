@@ -1,0 +1,102 @@
+{
+  "id": "REP-W-004",
+  "worker": "W-004",
+  "worker_result": "success",
+  "design_decision": true,
+  "minimalism_descent": "Closed the round-2 gap with one small pure helper (_new_side_order_ok, ~30 LOC of logic) plus a single guard call in _segment_is_faithful and two docstring bullets. No new data structure and no second language heuristic: the helper reuses the LCS survivor indices already computed as kept_merged and the seg_tokens already built by _build_segments. It classifies each declared new line as before/after/between the marker(s) from token positions and enforces the constraint on the concrete unmatched merged indices, so nothing is recomputed. The guard is inserted before the deletion shortcut (a wrong-side new line can violate with zero deletions) and gated on has_marker so replacement zones and no-marker segments are untouched. No threshold, public API, dependency, tldr, or tree-sitter change; the prior expected-output synthesizer was NOT reintroduced. Net +75 lines in chunked_merge.py, all additive.",
+  "tests": {
+    "added": [
+      "tests/test_hallucination_validation.py::test_after_marker_new_moved_before_gap_rejected",
+      "tests/test_hallucination_validation.py::test_before_marker_new_moved_after_gap_rejected",
+      "tests/test_hallucination_validation.py::test_identity_free_before_marker_new_moved_after_gap_rejected",
+      "tests/test_hallucination_validation.py::test_correct_side_marker_insertions_with_bystanders_accepted",
+      "tests/test_hallucination_validation.py::test_identity_free_local_replacement_correct_side_accepted_wrong_side_rejected",
+      "tests/test_hallucination_validation.py::test_repeated_identical_preserved_originals_side_order_enforced",
+      "tests/test_hallucination_validation.py::test_between_markers_new_line_placement_unconstrained",
+      "tests/test_hallucination_validation.py::test_generated_side_order_matrix_accept_reject_counts"
+    ],
+    "command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py tests/test_text_match.py",
+    "exit_code": 0,
+    "anti_gaming": "1) Regression-first RED on 0039c6d (new tests present, chunked_merge.py unmodified): 6 failed, 3 passed. The three blocking wrong-side counterexamples (after-marker moved-before-gap, before-marker moved-after-gap, identity-free before-marker moved-after-gap) each scored 1.000 and were false-accepted; the wrong-side halves of the local-replacement and repeated-survivor pairs also failed; and the independent generated matrix reported wrong-side rejected=0/16 (all 16 wrong-side placements accepted at 1.000). The pure-accept tests passed, proving the RED is specific to the missing side-order guard. 2) Mutation check: neutralizing the guard (if False and has_marker and not _new_side_order_ok(...)) re-fails all 6 side-order tests (matrix wrong-side rejected=0/16), proving it is load-bearing; guard restored and verified green (119 passed). 3) Independent generated matrix (test_generated_side_order_matrix_accept_reject_counts): 24 rows over survivor sets {1,2,3 distinct + a 2x identical dup() set} sweeping the lone new line across every slot for both before- and after-marker snippets -> after the fix, correct-side accepted=8/8 and wrong-side rejected=16/16, exactly as expected.",
+    "counts": {
+      "focused_after_fix": "119 passed",
+      "generated_matrix_after_fix": "rows=24, correct-side accepted=8/8, wrong-side rejected=16/16",
+      "generated_matrix_before_fix_on_0039c6d": "rows=24, correct-side accepted=8/8, wrong-side rejected=0/16"
+    }
+  },
+  "checks": [
+    {
+      "kind": "regression-first-red",
+      "command": "on 0039c6d (tests added, src unmodified): uv run --with pytest python -m pytest -q -s tests/test_hallucination_validation.py -k \"side_order or moved or between_markers or identity_free_local or repeated_identical or correct_side\"",
+      "exit_code": 1,
+      "observed": "6 failed, 3 passed, 29 deselected. The 3 blocking wrong-side tests failed (each scored 1.000 = false-accept), plus the wrong-side halves of the identity-free local-replacement and repeated-survivor pairs, plus the generated matrix (wrong-side rejected=0/16, all wrong-side placements accepted at 1.000). Correct-side and between-markers accept tests passed. Confirms the added regressions genuinely fail on the pre-fix candidate and reproduce the blocking finding's score_on_0039c6d=1.0.",
+      "gate": "regression-first"
+    },
+    {
+      "kind": "focused-tests",
+      "command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py tests/test_text_match.py",
+      "exit_code": 0,
+      "observed": "119 passed (111 pre-existing validator+text_match cases plus 8 new side-order cases). Generated matrix: correct-side accepted=8/8, wrong-side rejected=16/16. Issue #3 acceptance, deterministic_edit parity (7 rows), and all prior positive/negative regressions remain green.",
+      "gate": "marker-side-order"
+    },
+    {
+      "kind": "occurrence-order-and-multiplicity",
+      "command": "uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py::test_repeated_identical_preserved_originals_side_order_enforced tests/test_hallucination_validation.py::test_generated_side_order_matrix_accept_reject_counts",
+      "exit_code": 0,
+      "observed": "2 passed. The side-order guard keys off the concrete unmatched merged indices from the LCS alignment (not sets or global counts), so with two identical dup() survivors an after-marker new line wedged BETWEEN them (an LCS-ambiguous slot) is correctly rejected while placement after BOTH copies is accepted. The dup2 rows in the generated matrix exercise this for both before- and after-marker snippets.",
+      "gate": "occurrence-order-and-multiplicity"
+    },
+    {
+      "kind": "mutation-guard",
+      "command": "temporarily neutralize guard (if False and ...), then: uv run --with pytest python -m pytest -q tests/test_hallucination_validation.py -k \"moved or side_order or repeated_identical or identity_free_local\"",
+      "exit_code": 1,
+      "observed": "With the guard neutralized, 6 side-order tests fail (generated matrix wrong-side rejected=0/16) — proving _new_side_order_ok is load-bearing. Guard restored to `if has_marker and not _new_side_order_ok(...)`; focused suite re-passes 119.",
+      "gate": "marker-side-order"
+    },
+    {
+      "kind": "full-suite",
+      "command": "uv run --with pytest python -m pytest -q",
+      "exit_code": 1,
+      "observed": "4 failed, 902 passed, 24 skipped. All 4 failures are the pre-existing, unrelated optional-MLX ModuleNotFoundError('mlx') in tests/test_cli.py (TestCLIBatchEdit::{test_batch_edit_accepts_json_edits,test_batch_edit_reads_json_from_stdin} and TestCLIMultiEdit::{test_multi_edit_accepts_json,test_multi_edit_reads_from_stdin}), matching the documented baseline. Zero new failures; passed count rose from 894 (W-003) to 902 with the 8 added regressions; skipped unchanged at 24. The change touches neither cli.py nor mlx_engine.py.",
+      "gate": "no-new-failure"
+    },
+    {
+      "kind": "git-diff-check",
+      "command": "git diff --check",
+      "exit_code": 0,
+      "observed": "Clean — no trailing-whitespace or conflict markers in the diff."
+    },
+    {
+      "kind": "changed-file-lint",
+      "command": "uv run ruff check src/fastedit/inference/chunked_merge.py tests/test_hallucination_validation.py",
+      "exit_code": 0,
+      "observed": "All checks passed! on both changed Python files.",
+      "gate": "changed-file-lint"
+    }
+  ],
+  "out_of_bounds": [],
+  "interfaces_changed": [],
+  "generated_artifacts": [
+    "Commit 10b688f on branch parcadei/fastedit-hallucination-worker-w001: 'edit: enforce marker side-order invariant in hallucination validator' (src/fastedit/inference/chunked_merge.py +75/-2, tests/test_hallucination_validation.py +434/-0)",
+    "scratchpad/probe.py (ephemeral: printed deterministic_edit outputs for the 7 parity rows to confirm before-marker lines emit before the gap and after-marker lines after it)"
+  ],
+  "corrections": [
+    "No existing oracle was weakened, deleted, skipped, xfail'd, or rewritten. All 111 prior focused cases remain enabled and pass unchanged; only additive test functions and two module-level test helpers were appended.",
+    "Round-2 (0039c6d) discovery #2 in REP-W-003 explicitly documented that the invariant validator 'intentionally does not pin a marker-inserted new line's exact position relative to surviving originals.' DEC-001/ATT-004 supersedes that non-guarantee for the before-first-marker and after-last-marker positions, which the text_match contract fixes; the between-markers position remains intentionally unconstrained, so that documented boundary is preserved."
+  ],
+  "discoveries": [
+    "Root cause confirmed exactly as the blocking finding: _segment_is_faithful verified new-vs-new order (new_in_merged == new_all) and survivor-vs-survivor order (LCS) independently, but never compared an unmatched new occurrence's merged index against the matched survivors' merged indices. All three blocking corrupt merges keep the survivor multiset intact and only relocate the new line, so they slipped through at 1.0.",
+    "deterministic_edit is the semantic reference and is self-consistent with the new guard: probing the 7 parity rows shows before-marker new lines are emitted before the preserved gap and after-marker new lines after it (e.g. new-before-marker -> 'z = 99' precedes 'b = 2','c = 3'; new-after-marker -> 'r = 3' follows 'q = 2'; marker-key-replacement -> 'self._data = OrderedDict()' precedes surviving 'self.count = 0'). Enforcing the side-order therefore tightens the validator toward deterministic_edit rather than diverging from it — the parity matrix stays green.",
+    "Using occurrence indices (kept_merged from LCS + the ordered unmatched merged indices) rather than line values is what makes repeated-identical survivors safe: the guard rejects an after-marker line placed between two identical dup() survivors because its merged index is less than the last survivor's, which a set/count-based check could not detect.",
+    "The 4 full-suite failures are environmental (mlx backend not installed) and independent of this work item, matching the documented baseline of four optional-MLX CLI failures."
+  ],
+  "issues": [
+    "Pre-existing/unrelated: 4 optional-MLX failures in tests/test_cli.py (ModuleNotFoundError: No module named 'mlx') persist because the mlx backend is absent in this environment. Outside this work item's scope; matches the documented baseline. No action taken."
+  ],
+  "conventions": [
+    "Followed CLAUDE.md 'No Hardcoding': the side-order rule is fully general across all supported languages and dependency-free — no per-framework/per-language branch. Side is derived from marker-token positions in seg_tokens and identity still flows through the shared text_match._replacement_key, not if/elif on language or framework.",
+    "TDD / regression-first: the 8 negative+positive regressions were appended and shown RED on 0039c6d (three blocking cases scored 1.000) before any implementation change; implemented; re-run GREEN.",
+    "Kept helpers small and reused _lcs_matched output and the existing marker tokens per implementation_guidance; did not add a second language heuristic or restore the expected-output synthesizer; no deterministic_edit global-equality requirement was introduced (model fallback still handles ambiguous snippets).",
+    "Only the two in-bounds files were committed; the untracked .claude/ and .tldr/ directories were left unstaged and unmodified. No push/tag/PR."
+  ]
+}
