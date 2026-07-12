@@ -455,9 +455,9 @@
       "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
       "milestone": null,
       "scope": "pre_merge",
-      "status": "running",
-      "validation_result": null,
-      "validation_reason": null,
+      "status": "blocked",
+      "validation_result": "failed",
+      "validation_reason": "ATT-003 false-accepts snippet-new lines moved across marker-preserved gaps. The two automatic fix rounds are exhausted; continuing requires a reshape or explicit depth override.",
       "depends": [],
       "severity": "blocker",
       "failure_policy": "fix",
@@ -479,7 +479,7 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "running",
+      "stage": "blocked",
       "depends": [],
       "attempts": [
         {
