@@ -115,7 +115,7 @@
     "leak_id": null
   },
   "process_shape": "sequential",
-  "contract_state": "evolving",
+  "contract_state": "completed",
   "release_policy": "none",
   "skill_schema_version": "4.4",
   "refs_loaded": [

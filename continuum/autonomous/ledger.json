@@ -4,7 +4,7 @@
   "tasks": [
     {
       "id": "AUTO-20260712-fix-hallucination-validator",
-      "status": "validated",
+      "status": "completed",
       "profile_id": "code_patch",
       "process_shape": "sequential",
       "ledger_delta": "AUTO-20260712-fix-hallucination-validator/ledger_delta.json",
