@@ -1,0 +1,19 @@
+{
+  "target": null,
+  "release_policy": "none",
+  "deploy_authorized": false,
+  "deploy_authorization_source": null,
+  "artifact_identity": "autonomous/fix-hallucination-validator@3d5ea72",
+  "outcome": "skipped_no_deploy_target",
+  "target_detection": {
+    "result": "none",
+    "reason": "This run is a local library patch. The user did not request a push, pull request, package publication, tag, or deployment, and the resolved profile release policy is none."
+  },
+  "validation": "continuum/autonomous/AUTO-20260712-fix-hallucination-validator/validation/TASK.json",
+  "product_commits": [
+    "321ab09",
+    "7f3796d",
+    "603a6b5",
+    "b583181"
+  ]
+}
