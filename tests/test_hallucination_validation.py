@@ -741,3 +741,435 @@ def test_deterministic_edit_parity_accepted(
         f"[{label}] validator rejected a faithful deterministic_edit "
         f"output (score {score:.3f}); produced:\n{produced}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Fix-round-3 counterexamples — marker side-order invariant.
+# ---------------------------------------------------------------------------
+#
+# A marker-protected segment preserves the originals it brackets, but the
+# snippet's NEW lines still carry a *side* relative to the marker:
+#
+#   * a new line declared BEFORE the (first) marker is a top-of-gap
+#     insertion — it must precede EVERY surviving original in the segment;
+#   * a new line declared AFTER the (last) marker is a bottom-of-gap
+#     insertion — it must follow EVERY surviving original;
+#   * a new line declared BETWEEN two markers is position-ambiguous and
+#     imposes no ordering constraint on the survivors.
+#
+# ``deterministic_edit`` emits top-insertions before the preserved gap and
+# bottom-insertions after it (see the parity matrix above), so a faithful
+# merge always satisfies this invariant. The round-2 validator compared the
+# new-vs-new order and the survivor-vs-survivor order independently but
+# dropped the relative order BETWEEN an unmatched new line and the matched
+# survivors, so a new line teleported to the wrong side of a preserved gap
+# still scored a clean 1.0. The three ``*_wrong_*`` cases below are the
+# exact blocking counterexamples; they scored 1.0 before the fix and MUST
+# now be rejected.
+
+
+def test_after_marker_new_moved_before_gap_rejected():
+    """Blocking case 1 (after-marker moved before gap). ``r = 3`` is
+    declared AFTER the marker, so it must land after the preserved gap
+    (``q = 2``). This corrupt merge places ``r = 3`` BEFORE ``q = 2`` —
+    the wrong side of the gap — even though nothing is deleted and the
+    new/survivor multisets match. It MUST be rejected (scored 1.0 before
+    the fix)."""
+    original = (
+        "def g():\n"
+        "    p = 1\n"
+        "    q = 2\n"
+        "    return p\n"
+    )
+    snippet = (
+        "def g():\n"
+        "    p = 1\n"
+        "# ... existing code ...\n"
+        "    r = 3\n"
+        "    return p\n"
+    )
+    merged = (
+        "def g():\n"
+        "    p = 1\n"
+        "    r = 3\n"
+        "    q = 2\n"
+        "    return p\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"After-marker line moved before the gap scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_before_marker_new_moved_after_gap_rejected():
+    """Blocking case 2 (before-marker moved after gap). ``z = 99`` is
+    declared BEFORE the marker, so it must precede the preserved gap
+    (``b = 2``, ``c = 3``). This corrupt merge places ``z = 99`` AFTER the
+    survivors — the wrong side — with no deletion. It MUST be rejected
+    (scored 1.0 before the fix)."""
+    original = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+    snippet = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "# ... existing code ...\n"
+        "    return a\n"
+    )
+    merged = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    z = 99\n"
+        "    return a\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Before-marker line moved after the gap scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_identity_free_before_marker_new_moved_after_gap_rejected():
+    """Blocking case 3 (identity-free wrong side). The new line ``new()``
+    is declared BEFORE the marker and carries no assignment key, so it must
+    precede the preserved gap (``old()``, ``keep()``). This corrupt merge
+    appends ``new()`` after both survivors — the wrong side — and deletes
+    nothing. With no replacement key to reason about, only the side-order
+    invariant can reject it. It MUST be rejected (scored 1.0 before the
+    fix)."""
+    original = (
+        "def f():\n"
+        "    anchor()\n"
+        "    old()\n"
+        "    keep()\n"
+        "    end()\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    anchor()\n"
+        "    new()\n"
+        "# ... existing code ...\n"
+        "    end()\n"
+    )
+    merged = (
+        "def f():\n"
+        "    anchor()\n"
+        "    old()\n"
+        "    keep()\n"
+        "    new()\n"
+        "    end()\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Identity-free before-marker line moved after the gap scored "
+        f"{score:.3f}, expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_correct_side_marker_insertions_with_bystanders_accepted():
+    """Mandatory positive: a correctly placed before-marker insertion
+    (new line before the whole preserved gap) and a correctly placed
+    after-marker insertion (new line after the whole preserved gap) are
+    BOTH accepted with every bystander preserved. This is the accept half
+    of the side-order invariant — the guard must not reject faithful
+    insertions."""
+    # before-marker: z = 99 precedes the entire preserved gap.
+    original_b = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+    snippet_b = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "# ... existing code ...\n"
+        "    return a\n"
+    )
+    merged_b = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+    score_b = _score(original_b, merged_b, snippet_b)
+    assert score_b >= PASS_THRESHOLD, (
+        f"Correct-side before-marker insertion scored {score_b:.3f}, "
+        f"expected >= {PASS_THRESHOLD}"
+    )
+
+    # after-marker: r = 3 follows the entire preserved gap.
+    original_a = (
+        "def g():\n"
+        "    p = 1\n"
+        "    q = 2\n"
+        "    return p\n"
+    )
+    snippet_a = (
+        "def g():\n"
+        "    p = 1\n"
+        "# ... existing code ...\n"
+        "    r = 3\n"
+        "    return p\n"
+    )
+    merged_a = (
+        "def g():\n"
+        "    p = 1\n"
+        "    q = 2\n"
+        "    r = 3\n"
+        "    return p\n"
+    )
+    score_a = _score(original_a, merged_a, snippet_a)
+    assert score_a >= PASS_THRESHOLD, (
+        f"Correct-side after-marker insertion scored {score_a:.3f}, "
+        f"expected >= {PASS_THRESHOLD}"
+    )
+
+
+def test_identity_free_local_replacement_correct_side_accepted_wrong_side_rejected():
+    """Mandatory pair: an identity-free before-marker new line may replace
+    a justified front original and still precede the remaining survivor
+    (accepted); moving that same new line PAST its surviving bystander is
+    rejected. The replacement (``new()`` for ``old()``) is justified by
+    positional front-adjacency, but the side-order invariant still requires
+    ``new()`` to precede the survivor ``keep()``."""
+    original = (
+        "def f():\n"
+        "    anchor()\n"
+        "    old()\n"
+        "    keep()\n"
+        "    end()\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    anchor()\n"
+        "    new()\n"
+        "# ... existing code ...\n"
+        "    end()\n"
+    )
+    # Correct: new() replaces old() (front-justified) and precedes keep().
+    merged_ok = (
+        "def f():\n"
+        "    anchor()\n"
+        "    new()\n"
+        "    keep()\n"
+        "    end()\n"
+    )
+    score_ok = _score(original, merged_ok, snippet)
+    assert score_ok >= PASS_THRESHOLD, (
+        f"Correct-side identity-free local replacement scored "
+        f"{score_ok:.3f}, expected >= {PASS_THRESHOLD}"
+    )
+
+    # Wrong: same replacement, but new() now trails the survivor keep().
+    merged_bad = (
+        "def f():\n"
+        "    anchor()\n"
+        "    keep()\n"
+        "    new()\n"
+        "    end()\n"
+    )
+    score_bad = _score(original, merged_bad, snippet)
+    assert score_bad < PASS_THRESHOLD, (
+        f"Wrong-side identity-free local replacement scored "
+        f"{score_bad:.3f}, expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_repeated_identical_preserved_originals_side_order_enforced():
+    """Mandatory: repeated identical preserved originals must not let an
+    LCS tie hide a wrong-side new occurrence. The gap holds two identical
+    ``dup()`` lines; an after-marker ``r = 3`` is faithful only when it
+    follows BOTH copies. A merge that slots ``r = 3`` between the two
+    ``dup()`` survivors (an LCS-ambiguous position) is on the wrong side of
+    the second survivor and MUST be rejected."""
+    original = (
+        "def f():\n"
+        "    p = 1\n"
+        "    dup()\n"
+        "    dup()\n"
+        "    return p\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    p = 1\n"
+        "# ... existing code ...\n"
+        "    r = 3\n"
+        "    return p\n"
+    )
+    # Faithful: r = 3 follows both dup() copies.
+    merged_ok = (
+        "def f():\n"
+        "    p = 1\n"
+        "    dup()\n"
+        "    dup()\n"
+        "    r = 3\n"
+        "    return p\n"
+    )
+    score_ok = _score(original, merged_ok, snippet)
+    assert score_ok >= PASS_THRESHOLD, (
+        f"Faithful after-marker insertion past repeated survivors scored "
+        f"{score_ok:.3f}, expected >= {PASS_THRESHOLD}"
+    )
+
+    # Wrong: r = 3 lands BETWEEN the two dup() survivors.
+    merged_bad = (
+        "def f():\n"
+        "    p = 1\n"
+        "    dup()\n"
+        "    r = 3\n"
+        "    dup()\n"
+        "    return p\n"
+    )
+    score_bad = _score(original, merged_bad, snippet)
+    assert score_bad < PASS_THRESHOLD, (
+        f"After-marker line wedged between repeated survivors scored "
+        f"{score_bad:.3f}, expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_between_markers_new_line_placement_unconstrained():
+    """Mandatory boundary regression: a new line declared BETWEEN two
+    markers is position-ambiguous by design. The validator retains the
+    invention/omission/deletion checks but does NOT impose a side
+    constraint, so the new line is accepted whether it lands before,
+    between, or after the preserved survivors. This documents the
+    intentionally-unconstrained middle case (requirement 3)."""
+    original = (
+        "def fn():\n"
+        "    head()\n"
+        "    mid1()\n"
+        "    mid2()\n"
+        "    tail()\n"
+    )
+    snippet = (
+        "def fn():\n"
+        "    head()\n"
+        "# ... existing code ...\n"
+        "    inserted()\n"
+        "# ... existing code ...\n"
+        "    tail()\n"
+    )
+    placements = [
+        # inserted() before both survivors
+        "def fn():\n    head()\n    inserted()\n    mid1()\n    mid2()\n    tail()\n",
+        # inserted() between the survivors
+        "def fn():\n    head()\n    mid1()\n    inserted()\n    mid2()\n    tail()\n",
+        # inserted() after both survivors
+        "def fn():\n    head()\n    mid1()\n    mid2()\n    inserted()\n    tail()\n",
+    ]
+    for merged in placements:
+        score = _score(original, merged, snippet)
+        assert score >= PASS_THRESHOLD, (
+            f"Between-markers placement scored {score:.3f}, expected "
+            f">= {PASS_THRESHOLD} (position-ambiguous, must accept):\n{merged}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Independent generated matrix — correct-side vs wrong-side placements.
+# ---------------------------------------------------------------------------
+#
+# Beyond the hand-picked counterexamples, exhaustively enumerate single-
+# marker segments with 1..3 preserved survivors and place the sole new line
+# at every slot. For a before-marker snippet exactly ONE slot (ahead of all
+# survivors) is correct; for an after-marker snippet exactly ONE slot
+# (behind all survivors) is correct. Every other slot is a wrong-side
+# placement. This is generated independently of the fix so it cannot be
+# tuned to the implementation, and it stresses duplicate survivors where an
+# LCS tie could otherwise mask a wrong side.
+
+
+def _framed(body_lines: list[str]) -> str:
+    """Wrap body lines in a ``def fn():`` shell at 4-space indent."""
+    return "def fn():\n" + "".join(f"    {ln}\n" for ln in body_lines)
+
+
+def _generate_side_order_matrix() -> list[tuple[str, str, str, str, bool]]:
+    """Return ``(label, original, snippet, merged, expect_accept)`` rows.
+
+    Survivor sets of size 1..3 (including an all-identical ``dup()`` set to
+    exercise LCS ties) are bracketed by ``head()``/``tail()`` anchors and a
+    single marker. The lone new line ``inserted()`` is swept across every
+    inter-survivor slot; only the marker-consistent extreme is faithful.
+    """
+    rows: list[tuple[str, str, str, str, bool]] = []
+    survivor_sets = {
+        1: ["keep1()"],
+        2: ["keep1()", "keep2()"],
+        3: ["keep1()", "keep2()", "keep3()"],
+        # Repeated identical survivors — LCS-ambiguous slots.
+        "dup2": ["dup()", "dup()"],
+    }
+    for tag, survivors in survivor_sets.items():
+        n = len(survivors)
+        original = _framed(["head()", *survivors, "tail()"])
+        snippet_before = _framed(
+            ["head()", "inserted()", "# ... existing code ...", "tail()"]
+        )
+        snippet_after = _framed(
+            ["head()", "# ... existing code ...", "inserted()", "tail()"]
+        )
+        for pos in range(n + 1):
+            body = ["head()", *survivors[:pos], "inserted()", *survivors[pos:], "tail()"]
+            merged = _framed(body)
+            rows.append(
+                (f"before-{tag}-pos{pos}", original, snippet_before, merged, pos == 0)
+            )
+            rows.append(
+                (f"after-{tag}-pos{pos}", original, snippet_after, merged, pos == n)
+            )
+    return rows
+
+
+def test_generated_side_order_matrix_accept_reject_counts():
+    """Every generated correct-side placement is accepted and every
+    wrong-side placement is rejected. Reports exact counts so the matrix
+    coverage is auditable (visible with ``pytest -s``)."""
+    rows = _generate_side_order_matrix()
+    accepted_correct = 0
+    rejected_wrong = 0
+    mismatches: list[str] = []
+    for label, original, snippet, merged, expect_accept in rows:
+        score = _score(original, merged, snippet)
+        is_accept = score >= PASS_THRESHOLD
+        if expect_accept and is_accept:
+            accepted_correct += 1
+        elif not expect_accept and not is_accept:
+            rejected_wrong += 1
+        else:
+            verdict = "ACCEPT" if is_accept else "REJECT"
+            want = "ACCEPT" if expect_accept else "REJECT"
+            mismatches.append(f"{label}: got {verdict} (score {score:.3f}), want {want}")
+
+    total = len(rows)
+    correct_total = sum(1 for r in rows if r[4])
+    wrong_total = total - correct_total
+    print(
+        f"\n[side-order matrix] rows={total} "
+        f"correct-side accepted={accepted_correct}/{correct_total} "
+        f"wrong-side rejected={rejected_wrong}/{wrong_total}"
+    )
+    assert not mismatches, (
+        "Generated side-order matrix mismatches:\n" + "\n".join(mismatches)
+    )
+    assert accepted_correct == correct_total
+    assert rejected_wrong == wrong_total

@@ -149,6 +149,13 @@ def _check_hallucinations(
         proximity; ambiguous keys fail closed.
       * **preserved-line reorder / loss** — surviving originals must keep
         their relative order and multiplicity.
+      * **marker side-order violation** — a snippet-new line declared
+        before the first marker must precede every surviving original in
+        its segment, and one declared after the last marker must follow
+        every survivor. A new line teleported to the wrong side of the
+        preserved gap is rejected even when nothing is deleted. New lines
+        declared between two markers are position-ambiguous and impose no
+        side constraint.
 
     ``_replacement_key`` (imported from :mod:`text_match`) is the single
     shared identity heuristic — the validator maintains no second
@@ -306,7 +313,8 @@ def _segment_is_faithful(
     and become replacement zones only when they carry new lines with no
     marker. Internal (mid) segments without a marker are replacement zones
     (the gap is overwritten). Marker segments preserve originals unless a
-    deletion is locally justified.
+    deletion is locally justified, and their new lines must satisfy the
+    marker side-order invariant (see :func:`_new_side_order_ok`).
     """
     new_all = [t[2] for t in seg_tokens if t[0] == "new"]
     has_marker = any(t[0] == "marker" for t in seg_tokens)
@@ -331,6 +339,15 @@ def _segment_is_faithful(
         merged_seg[j] for j in range(len(merged_seg)) if j not in kept_merged
     ]
     if new_in_merged != new_all:
+        return False
+
+    # Marker side-order invariant: a snippet-new line declared before the
+    # first marker must precede every surviving original in the merge, and a
+    # new line declared after the last marker must follow every survivor.
+    # Checked before the deletion shortcut below because a wrong-side new
+    # line can violate the invariant with no deletion at all (the survivor
+    # multiset is intact — only the relative placement is corrupt).
+    if has_marker and not _new_side_order_ok(seg_tokens, merged_seg, kept_merged):
         return False
 
     deleted = [i for i in range(len(orig_seg)) if i not in kept_orig]
@@ -418,6 +435,64 @@ def _deletions_justified(
         if i < front_cover or i >= n - back_cover:
             continue
         return False
+    return True
+
+
+def _new_side_order_ok(
+    seg_tokens: list[tuple[str, int | None, str | None]],
+    merged_seg: list[str],
+    kept_merged: set[int],
+) -> bool:
+    """Check the marker side-order invariant for one protected segment.
+
+    A snippet-new line declared *before the first marker* is a top-of-gap
+    insertion — it must occur before every surviving original in the merge.
+    A new line declared *after the last marker* is a bottom-of-gap
+    insertion — it must occur after every survivor. A new line declared
+    *between* two markers is position-ambiguous and imposes no constraint;
+    the caller's invention/omission/deletion checks still apply to it.
+
+    The k-th unmatched merged occurrence (in merge order) corresponds to the
+    k-th declared new line, because the caller has already verified the
+    merged new lines equal the declared new lines in order and multiplicity.
+    Enforcing the constraint on the concrete merged indices from the LCS
+    alignment — not on line values or global counts — keeps repeated
+    survivors and repeated new lines correctly positioned, so an LCS tie
+    cannot hide a wrong-side new occurrence.
+
+    Returns ``True`` when the segment carries no marker or no surviving
+    original (the constraint is then vacuous — deletion justification still
+    governs acceptance upstream).
+    """
+    marker_positions = [i for i, t in enumerate(seg_tokens) if t[0] == "marker"]
+    if not marker_positions:
+        return True
+    first_marker, last_marker = marker_positions[0], marker_positions[-1]
+
+    # Side of each declared new line, in declared order. This list is
+    # parallel to the unmatched merged occurrences (same length, same order).
+    new_sides: list[str] = []
+    for i, t in enumerate(seg_tokens):
+        if t[0] != "new":
+            continue
+        if i < first_marker:
+            new_sides.append("before")
+        elif i > last_marker:
+            new_sides.append("after")
+        else:
+            new_sides.append("between")
+
+    survivors = sorted(kept_merged)
+    if not survivors:
+        return True
+    first_survivor, last_survivor = survivors[0], survivors[-1]
+
+    unmatched = [j for j in range(len(merged_seg)) if j not in kept_merged]
+    for side, j in zip(new_sides, unmatched):
+        if side == "before" and j > first_survivor:
+            return False
+        if side == "after" and j < last_survivor:
+            return False
     return True
 
 
