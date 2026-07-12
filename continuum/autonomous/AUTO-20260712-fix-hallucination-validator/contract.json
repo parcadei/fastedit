@@ -115,7 +115,7 @@
     "leak_id": null
   },
   "process_shape": "sequential",
-  "contract_state": "planned",
+  "contract_state": "executing",
   "release_policy": "none",
   "skill_schema_version": "4.4",
   "refs_loaded": [
@@ -353,7 +353,7 @@
       "text": "Given a line-replacing snippet, the validator accepts a faithful merge and rejects variants that delete unrelated code, omit required snippet code, duplicate or reorder code, invent content, or leak a marker.",
       "milestone": null,
       "scope": "pre_merge",
-      "status": "pending",
+      "status": "ready",
       "validation_result": null,
       "validation_reason": null,
       "depends": [],
@@ -377,7 +377,7 @@
       "id": "WI-001",
       "assertion": "VAL-001",
       "role": "implement",
-      "stage": "planned",
+      "stage": "ready",
       "depends": [],
       "attempts": [],
       "report": {
