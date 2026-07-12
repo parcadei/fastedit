@@ -302,6 +302,17 @@
       "status": "open",
       "finding_severity": "warn",
       "routing": "add_risk"
+    },
+    {
+      "id": "RISK-003",
+      "kind": "integration",
+      "description": "A validator-side reimplementation of text_match marker semantics can drift from the existing deterministic_edit contract and false-reject valid model output.",
+      "probability": "high",
+      "impact": "high",
+      "mitigation": "VAL-001",
+      "status": "realized",
+      "finding_severity": "blocker",
+      "routing": "add_assertion"
     }
   ],
   "decisions_log": [],
@@ -360,7 +371,7 @@
         "orca_task_id": "task_44e8ad0a5ab9",
         "orca_dispatch_id": "ctx_ba335cda62cd",
         "orca_terminal_handle": "term_a6a403a5-342a-4850-8846-f0a94a0fa556",
-        "orca_dispatch_status": "dispatched"
+        "orca_dispatch_status": "completed"
       }
     ],
     "attempt_validations": [
@@ -375,6 +386,17 @@
           "REP-W-001 uses invalid worker-report field types for worker_result, design_decision, checks, out_of_bounds, and interfaces_changed."
         ],
         "evidence": "Independent inline execution against commit 3265141 produced scores 0.0, 1.0, 0.0, and 1.0 for faithful-marker, corrupt-marker, faithful-insertion, and corrupt-new-order cases respectively."
+      },
+      {
+        "attempt": "ATT-002",
+        "result": "failed",
+        "report_schema_valid": false,
+        "blocking_findings": [
+          "The expected-output synthesizer treats a snippet-new line immediately before a preservation marker as replacing the first original in the marker-covered gap, contradicting deterministic_edit marker semantics.",
+          "A faithful new-before-marker merge produced by deterministic_edit scores 0.0 because the validator expects the first preserved bystander to disappear.",
+          "REP-W-002 identifies its worker as W-001 instead of W-002 and records exit_code 0 for a full-suite observation containing four failures, so its report provenance and check result are internally inconsistent."
+        ],
+        "evidence": "Independent replay against commit e79df43: original [def foo, a=1, b=2, c=3, return a] plus snippet [def foo, a=1, z=99, marker, return a] yields deterministic_edit output [def foo, a=1, z=99, b=2, c=3, return a], but _check_hallucinations returns 0.0. The exact issue #3 reproduction returns 1.0, so the attempt is relevant but not safely integrable."
       }
     ],
     "prepared_checks": {
@@ -432,8 +454,8 @@
           "worker": "W-002",
           "report": "REP-W-002",
           "kind": "fix",
-          "worker_result": "pending",
-          "validation_result": null
+          "worker_result": "partial",
+          "validation_result": "failed"
         }
       ],
       "report": {
