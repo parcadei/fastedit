@@ -82,7 +82,7 @@ def _fetch_latest_from_pypi() -> str | None:
         with urlopen(req, timeout=FETCH_TIMEOUT_S) as resp:
             data = json.load(resp)
         return data.get("info", {}).get("version")
-    except Exception:
+    except Exception:  # noqa: BLE001 -- deliberate: any network/JSON/shape hiccup must yield None (no update notice), never propagate into the CLI
         return None
 
 def get_version_info() -> tuple[str | None, str | None]:
@@ -127,12 +127,13 @@ def get_update_notice() -> str | None:
     try:
         if _parse_version(latest) <= _parse_version(current):
             return None
-    except Exception:
+    except Exception:  # noqa: BLE001 -- deliberate: malformed remote version strings must suppress the notice, never crash the CLI
         return None
 
     return (
         f"[fastedit {latest} available — you're on {current}. "
-        f"Run: pip install -U fastedits  (restart the MCP server after)]"
+        f"Run: uv tool upgrade fastedits (or pip install -U fastedits)"
+        f"  (restart the MCP server after)]"
     )
 
 

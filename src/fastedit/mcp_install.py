@@ -15,7 +15,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-
 FASTEDIT_ENTRY = {
     "command": "fastedit-mcp",
     "type": "stdio",
@@ -35,7 +34,7 @@ def install_mcp_config(scope: str = "user") -> int:
 
     if path.exists():
         try:
-            config = json.loads(path.read_text())
+            config = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as e:
             print(f"error: {path} is not valid JSON: {e}", file=sys.stderr)
             return 1
@@ -70,13 +69,13 @@ def install_mcp_config(scope: str = "user") -> int:
         )
 
     if path.exists():
-        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")  # noqa: DTZ005 -- local wall-clock backup stamp is intentional; tz-aware would change the emitted filename
         backup = path.with_name(path.name + f".bak-{stamp}")
         shutil.copy(path, backup)
         print(f"backup: {backup}")
 
     servers["fastedit"] = FASTEDIT_ENTRY
-    path.write_text(json.dumps(config, indent=2) + "\n")
+    path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
     print(f"{path} — fastedit MCP entry installed")
     print("\nRestart Claude Code for the change to take effect.")
     return 0

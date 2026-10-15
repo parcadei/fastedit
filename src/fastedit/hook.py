@@ -40,8 +40,20 @@ except ImportError:
 
 
 def main():
-    inp = json.load(sys.stdin)
+    # Hook-contract tolerance: an unparsable or non-object stdin payload
+    # gives us no file path to classify. Exiting 0 with no output falls
+    # through to built-in Edit — the same fall-open the hook applies to
+    # every extension it cannot classify — instead of crashing with a
+    # traceback (a non-zero hook exit surfaces as an error in the host).
+    try:
+        inp = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        sys.exit(0)
+    if not isinstance(inp, dict):
+        sys.exit(0)
     tool_input = inp.get("tool_input", {})
+    if not isinstance(tool_input, dict):
+        sys.exit(0)
 
     file_path = tool_input.get("file_path") or tool_input.get("path") or ""
     ext = Path(file_path).suffix.lower() if file_path else ""

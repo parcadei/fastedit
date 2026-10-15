@@ -1,0 +1,7 @@
+title = "fastedit"
+
+[dependencies]
+serde = "1"
+
+[tool.pytest]
+minversion = "7.0"

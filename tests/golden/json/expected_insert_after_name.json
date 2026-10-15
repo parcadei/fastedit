@@ -1,0 +1,12 @@
+{
+  "name": "fastedit",
+
+  "license": "MIT",
+
+  "version": "0.5.0",
+  "config": {
+    "debug": true,
+    "level": 3
+  },
+  "tags": ["ast", "edit"]
+}

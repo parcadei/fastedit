@@ -25,6 +25,25 @@ def _should_not_call_model(*args, **kwargs):
     )
 
 
+class _FakeModelResult:
+    """Minimal stand-in for the engine's MergeResult."""
+
+    def __init__(self, merged_code):
+        self.merged_code = merged_code
+        self.tokens_generated = 11
+        self.latency_ms = 1.0
+        self.parse_valid = True
+
+
+def _model_returns_original(code, snippet, language):
+    """Fallback model stand-in: records the call, leaves the code intact."""
+    _model_returns_original.called = True
+    return _FakeModelResult(code)
+
+
+_model_returns_original.called = False
+
+
 def test_multiline_signature_python_preserved():
     original = (
         "def foo(\n"
@@ -95,7 +114,24 @@ def test_multiline_signature_with_return_annotation():
 
 
 def test_multiline_signature_rust():
-    """tree-sitter-rust exposes the same ``body`` field on ``function_item``."""
+    """tree-sitter-rust exposes the same ``body`` field on ``function_item``.
+
+    UPDATED (preserve-by-default, Step 5): the extracted signature span now
+    ends AFTER the block opener — ``) -> i32 {`` — so the prepended lines
+    match the original signature exactly and are pinned as fixed context
+    instead of being misclassified as column-0 new lines.
+
+    The deterministic editor STILL declines this particular shape, and that
+    decline is correct preserve-by-default behavior: the snippet's only
+    content is the bare tail expression ``a * b`` — an ambiguous rewrite of
+    the preserved tail expression ``a + b`` (same leading token, no
+    assignment LHS, no marker). Emitting both would silently change which
+    expression is the function's return value, so the editor declines
+    rather than guess. The snippet is also not a complete re-definition
+    (no closing brace), so the direct-swap fast path declines it too.
+    The model decides; the fast path hands it the original with the
+    signature (opener included) intact.
+    """
     original = (
         "fn foo(\n"
         "    a: i32,\n"
@@ -105,15 +141,33 @@ def test_multiline_signature_rust():
         "}\n"
     )
     snippet = "    a * b\n"
+    _model_returns_original.called = False
     result = chunked_merge(
         original, snippet, "/tmp/test_rust_sig.rs",
-        _should_not_call_model, language="rust", replace="foo",
+        _model_returns_original, language="rust", replace="foo",
     )
-    assert "fn foo(\n    a: i32,\n    b: i32,\n) -> i32" in result.merged_code
-    assert "a * b" in result.merged_code
+    assert _model_returns_original.called, (
+        "deterministic path must decline the brace-less prepended "
+        "signature and fall through to the model"
+    )
+    # The model fallback receives the original intact — the signature
+    # (opener included) was never dropped by the fast path.
+    assert "fn foo(\n    a: i32,\n    b: i32,\n) -> i32 {" in result.merged_code
+    assert "a * b" not in result.merged_code or result.merged_code == original
 
 
 def test_multiline_signature_typescript():
+    """UPDATED (preserve-by-default, Step 5): the extracted TypeScript
+    signature now ends after the ``): number {`` opener and the prepended
+    lines are pinned context. The edit still completes on the MODEL path,
+    and that is the correct preserve-by-default outcome: the snippet's
+    only content, ``return a * b;``, is an ambiguous rewrite of the
+    preserved ``return a + b;`` (same leading token, no assignment LHS,
+    no marker) — the deterministic editor declines rather than emit both
+    or drop one — and the snippet is not a complete re-definition (no
+    closing brace), so the direct-swap fast path declines it as well.
+    The model fallback receives the signature intact.
+    """
     original = (
         "function foo(\n"
         "  a: number,\n"
@@ -123,17 +177,22 @@ def test_multiline_signature_typescript():
         "}\n"
     )
     snippet = "  return a * b;\n"
+    _model_returns_original.called = False
     result = chunked_merge(
         original, snippet, "/tmp/test_ts_sig.ts",
-        _should_not_call_model, language="typescript", replace="foo",
+        _model_returns_original, language="typescript", replace="foo",
     )
-    assert "function foo(\n  a: number,\n  b: number,\n): number" in result.merged_code
-    assert "return a * b;" in result.merged_code
+    assert _model_returns_original.called, (
+        "deterministic path must decline the brace-less prepended "
+        "signature and fall through to the model"
+    )
+    assert (
+        "function foo(\n  a: number,\n  b: number,\n): number {" in result.merged_code
+    )
 
 import pytest
 
 from fastedit.inference.chunked_merge import _extract_signature_via_ast
-
 
 # Every tree-sitter grammar FastEdit supports. For each one: a source file
 # with a MULTI-LINE parameter list, the line range of the target function/

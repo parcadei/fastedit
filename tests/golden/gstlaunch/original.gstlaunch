@@ -1,0 +1,3 @@
+fakesrc num-buffers=10 ! fakesink
+
+fakesrc ! queue ! fakesink

@@ -1,0 +1,44 @@
+{
+  "language": "php",
+  "ext": "php",
+  "filename": "original.php",
+  "symbol_semantics": "functions, classes/interfaces/traits, methods, const declarations. The grammar parses script content only after <?php, so a standalone-parsed redefinition snippet cannot serve direct-swap; the replace op uses the marker-bearing text-match form with an assignment body (unique replacement key)",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "alpha",
+      "snippet": "function gamma($z) {\n    return $z - 1;\n}\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 5,
+        "anchor_end_line": 7
+      },
+      "expected": "expected_insert_after_alpha.php"
+    },
+    {
+      "op": "replace_symbol",
+      "symbol": "beta",
+      "snippet": "function beta($y) {\n// ... existing code ...\n    $result = $y * 3;\n    return $result;\n// ... existing code ...\n}\n",
+      "path": "text_match",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 9,
+        "end_line": 12
+      },
+      "expected": "expected_replace_symbol_beta.php"
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "LIMIT",
+      "snippet": null,
+      "path": null,
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 3,
+        "end_line": 3
+      },
+      "expected": "expected_delete_symbol_LIMIT.php"
+    }
+  ]
+}

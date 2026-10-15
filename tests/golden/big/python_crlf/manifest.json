@@ -1,0 +1,153 @@
+{
+  "schema": "fastedit-corpus-golden/1",
+  "case": "python_crlf",
+  "language": "python",
+  "ext": "py",
+  "filename": "original.py",
+  "eol": "\r\n",
+  "final_eol": true,
+  "indent": "    ",
+  "sprinkle_cjk": false,
+  "seed": 20260214,
+  "target_bytes": 1048576,
+  "actual_bytes": 1048498,
+  "symbol_count": 2413,
+  "max_symbol_lines": 132,
+  "oracle": "tests/corpus.py apply_op_oracle — independent line-splice arithmetic on generator-recorded indices; never imports fastedit, never parses code",
+  "regenerate": "uv run python tests/golden/big/_generate.py",
+  "recipe": {
+    "language": "python",
+    "target_bytes": 1048576,
+    "eol": "\r\n",
+    "final_eol": true,
+    "indent": "    ",
+    "seed": 20260214,
+    "sprinkle_cjk": false
+  },
+  "ops": [
+    {
+      "op": "insert_after_symbol",
+      "symbol": "fn_000610",
+      "language": "python",
+      "ext": "py",
+      "eol": "\r\n",
+      "final_eol": true,
+      "note": "insert a fresh python function after 'fn_000610'",
+      "payload": "def fn_ins_20260214_a(value_a, value_b):\r\n    \"\"\"fn_ins_20260214_a: deterministic corpus function (plain).\"\"\"\r\n    acc_fn_ins_20260214_a = value_a + value_b + 1  # fn_ins_20260214_a step 1\r\n    acc_fn_ins_20260214_a += 2  # fn_ins_20260214_a step 2\r\n    acc_fn_ins_20260214_a += 3  # fn_ins_20260214_a step 3\r\n    acc_fn_ins_20260214_a += 4  # fn_ins_20260214_a step 4\r\n    return acc_fn_ins_20260214_a  # fn_ins_20260214_a result\r\n",
+      "oracle": {
+        "anchor_start_line": 7101,
+        "anchor_end_line": 7106,
+        "anchor_last_line": "    return acc_fn_000610  # fn_000610 result\r\n",
+        "anchor_is_last_line": false,
+        "start_line": null,
+        "end_line": null,
+        "consumed_end_line": null,
+        "original_span_text": null,
+        "sep_before": true,
+        "sep_after": false,
+        "snippet_line_count": 7
+      },
+      "expected": "expected_insert_after_symbol_fn_000610.py",
+      "inverse": {
+        "kind": "delete",
+        "start_line": 7107,
+        "end_line": 7114,
+        "after_line": 0,
+        "text": ""
+      }
+    },
+    {
+      "op": "replace_symbol_body",
+      "symbol": "fn_001282",
+      "language": "python",
+      "ext": "py",
+      "eol": "\r\n",
+      "final_eol": true,
+      "note": "replace the body of 'fn_001282' with an edited variant (tag 20260214); signature restated for the direct-swap path",
+      "payload": "def fn_001282(value_a, value_b):\r\n    \"\"\"fn_001282: deterministic corpus function (edited).\"\"\"\r\n    acc_fn_001282 = value_a * 1 + 7  # fn_001282 edited step 1\r\n    acc_fn_001282 += 6  # fn_001282 edited step 2\r\n    acc_fn_001282 += 9  # fn_001282 edited step 3\r\n    return acc_fn_001282 + 900001  # fn_001282 edited result\r\n",
+      "oracle": {
+        "anchor_start_line": null,
+        "anchor_end_line": null,
+        "anchor_last_line": null,
+        "anchor_is_last_line": false,
+        "start_line": 14750,
+        "end_line": 14755,
+        "consumed_end_line": null,
+        "original_span_text": "def fn_001282(value_a, value_b):\r\n    \"\"\"fn_001282: deterministic corpus function (plain).\"\"\"\r\n    acc_fn_001282 = value_a + value_b + 1  # fn_001282 step 1\r\n    acc_fn_001282 += 2  # fn_001282 step 2\r\n    acc_fn_001282 += 3  # fn_001282 step 3\r\n    return acc_fn_001282  # fn_001282 result\r\n",
+        "sep_before": false,
+        "sep_after": false,
+        "snippet_line_count": 0
+      },
+      "expected": "expected_replace_symbol_body_fn_001282.py",
+      "inverse": {
+        "kind": "replace",
+        "start_line": 14750,
+        "end_line": 14755,
+        "after_line": 0,
+        "text": "def fn_001282(value_a, value_b):\r\n    \"\"\"fn_001282: deterministic corpus function (plain).\"\"\"\r\n    acc_fn_001282 = value_a + value_b + 1  # fn_001282 step 1\r\n    acc_fn_001282 += 2  # fn_001282 step 2\r\n    acc_fn_001282 += 3  # fn_001282 step 3\r\n    return acc_fn_001282  # fn_001282 result\r\n"
+      }
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "fn_001887",
+      "language": "python",
+      "ext": "py",
+      "eol": "\r\n",
+      "final_eol": true,
+      "note": "delete 'fn_001887' and the blank lines that separated it from what follows",
+      "payload": null,
+      "oracle": {
+        "anchor_start_line": null,
+        "anchor_end_line": null,
+        "anchor_last_line": null,
+        "anchor_is_last_line": false,
+        "start_line": 21605,
+        "end_line": 21615,
+        "consumed_end_line": 21617,
+        "original_span_text": "def fn_001887(value_a, value_b):\r\n    \"\"\"fn_001887: deterministic corpus function (plain).\"\"\"\r\n    acc_fn_001887 = value_a + value_b + 1  # fn_001887 step 1\r\n    acc_fn_001887 += 2  # fn_001887 step 2\r\n    acc_fn_001887 += 3  # fn_001887 step 3\r\n    acc_fn_001887 += 4  # fn_001887 step 4\r\n    acc_fn_001887 += 5  # fn_001887 step 5\r\n    acc_fn_001887 += 6  # fn_001887 step 6\r\n    acc_fn_001887 += 7  # fn_001887 step 7\r\n    acc_fn_001887 += 8  # fn_001887 step 8\r\n    return acc_fn_001887  # fn_001887 result\r\n\r\n\r\n",
+        "sep_before": false,
+        "sep_after": false,
+        "snippet_line_count": 0
+      },
+      "expected": "expected_delete_symbol_fn_001887.py",
+      "inverse": {
+        "kind": "insert",
+        "start_line": 0,
+        "end_line": 0,
+        "after_line": 21604,
+        "text": "def fn_001887(value_a, value_b):\r\n    \"\"\"fn_001887: deterministic corpus function (plain).\"\"\"\r\n    acc_fn_001887 = value_a + value_b + 1  # fn_001887 step 1\r\n    acc_fn_001887 += 2  # fn_001887 step 2\r\n    acc_fn_001887 += 3  # fn_001887 step 3\r\n    acc_fn_001887 += 4  # fn_001887 step 4\r\n    acc_fn_001887 += 5  # fn_001887 step 5\r\n    acc_fn_001887 += 6  # fn_001887 step 6\r\n    acc_fn_001887 += 7  # fn_001887 step 7\r\n    acc_fn_001887 += 8  # fn_001887 step 8\r\n    return acc_fn_001887  # fn_001887 result\r\n\r\n\r\n"
+      }
+    },
+    {
+      "op": "append_at_eof",
+      "symbol": "fn_002413",
+      "language": "python",
+      "ext": "py",
+      "eol": "\r\n",
+      "final_eol": true,
+      "note": "append a fresh python function at EOF (after the last symbol 'fn_002413')",
+      "payload": "def fn_ins_20260214_b(value_a, value_b):\r\n    \"\"\"fn_ins_20260214_b: deterministic corpus function (plain).\"\"\"\r\n    acc_fn_ins_20260214_b = value_a + value_b + 1  # fn_ins_20260214_b step 1\r\n    acc_fn_ins_20260214_b += 2  # fn_ins_20260214_b step 2\r\n    acc_fn_ins_20260214_b += 3  # fn_ins_20260214_b step 3\r\n    acc_fn_ins_20260214_b += 4  # fn_ins_20260214_b step 4\r\n    return acc_fn_ins_20260214_b  # fn_ins_20260214_b result\r\n",
+      "oracle": {
+        "anchor_start_line": 27600,
+        "anchor_end_line": 27606,
+        "anchor_last_line": "    return acc_fn_002413  # fn_002413 result\r\n",
+        "anchor_is_last_line": true,
+        "start_line": null,
+        "end_line": null,
+        "consumed_end_line": null,
+        "original_span_text": null,
+        "sep_before": true,
+        "sep_after": false,
+        "snippet_line_count": 7
+      },
+      "expected": "expected_append_at_eof_fn_002413.py",
+      "inverse": {
+        "kind": "delete",
+        "start_line": 27607,
+        "end_line": 27614,
+        "after_line": 0,
+        "text": ""
+      }
+    }
+  ]
+}

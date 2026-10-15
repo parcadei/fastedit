@@ -1,0 +1,5 @@
+name "fastedit"
+server {
+    host "localhost"
+    port 5432
+}

@@ -1,0 +1,3 @@
+task main() {
+    OnFwd(OUT_A);
+}

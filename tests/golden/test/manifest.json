@@ -1,0 +1,82 @@
+{
+  "language": "test",
+  "ext": "test",
+  "filename": "original.test",
+  "symbol_semantics": "the `test` record (header separator/name/separator + input + closing separator), named by its header's `name` line. The grammar models a whole file as ONE record whose input swallows inner separators, so the record span is the whole file and after=<record name> appends a new record at EOF",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "Sample test",
+      "snippet": "================\nSecond record\n================\nprint(\"bye\")\n================\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 1,
+        "anchor_end_line": 5
+      },
+      "expected": "expected_insert_after_Sample_test.test"
+    }
+  ],
+  "requires_wheel": "tree_sitter_language_pack",
+  "census_note": "census (F1) verdict was parse_degraded and F3 kept the exclusion fail-loud: every trivial probe line is an outright ERROR node for this grammar, and the grammar's own complete record ends in one systematic zero-width MISSING trait at EOF (the defect record below). G1a's artifact filter removes that systematic trait from the trait lists (tagged in .grammar_artifacts), so a same-record edit on a .test file now LANDS; G1b adds the declarative record-anchoring row (_FORMAT_SYMBOL_SPECS['test']) and this exercised op. Census verdict flips to ok — the artifact is FILTERED, not absent (the v2 probe reports the filtered count)",
+  "census_fixture": true,
+  "grammar_defect_workaround": {
+    "reason": "pack grammar defect (tree-sitter-language-pack 0.13.0): the `test` grammar parses the header (separator / name / separator) but its `input` region greedily consumes the closing separator line, so EVERY complete test record ends in a MISSING-separator error trait at EOF, and a header-only file is an outright ERROR node. F3 verified a matrix of real-syntax shapes (recorded below with their exact parse_diagnostics errors) — none parse clean, so F3 excluded the language instead of fabricating a fixture. G1a's _GRAMMAR_ARTIFACT_FILTERS['test'] = (('MISSING', 'eof'),) removes the SYSTEMATIC EOF emission from the trait lists (tagged in .grammar_artifacts) so same-record edits land while header-only breakage still rejects; G1b flipped the exclusion into this exercised fixture. The recorded attempts stay as negative evidence: they pin the defect exactly (test_golden_matrix.test_grammar_defect_workaround_is_real) so an upstream grammar fix — or a regression — surfaces loudly",
+    "attempts": [
+      {
+        "description": "complete test record: header + input + closing separator",
+        "snippet": "================\nSample test\n================\nprint(\"hi\")\n================\n",
+        "parse_errors": [
+          [
+            75,
+            75,
+            "MISSING"
+          ]
+        ]
+      },
+      {
+        "description": "complete test record, closing separator without a trailing newline",
+        "snippet": "================\nSample test\n================\nprint(\"hi\")\n================",
+        "parse_errors": [
+          [
+            74,
+            74,
+            "MISSING"
+          ]
+        ]
+      },
+      {
+        "description": "header only (no input, no closing separator)",
+        "snippet": "================\nSample test\n================\n",
+        "parse_errors": [
+          [
+            0,
+            46,
+            "ERROR"
+          ]
+        ]
+      },
+      {
+        "description": "two complete test records",
+        "snippet": "================\nOne\n================\ndo it\n================\nTwo\n================\nagain\n================\n",
+        "parse_errors": [
+          [
+            105,
+            105,
+            "MISSING"
+          ]
+        ]
+      }
+    ]
+  },
+  "unsupported": [
+    {
+      "op": "replace_symbol",
+      "reason": "G1b record anchoring resolves the span, but the record's span IS the whole file (one record per file in this grammar), so a replace is a whole-file rewrite — declared here, not exercised in the golden scope"
+    },
+    {
+      "op": "delete_symbol",
+      "reason": "same span shape as replace_symbol: deleting the record deletes the file — declared here, not exercised"
+    }
+  ]
+}

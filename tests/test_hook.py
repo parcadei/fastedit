@@ -25,10 +25,29 @@ def run_hook(payload: dict) -> subprocess.CompletedProcess:
     )
 
 
+def run_hook_raw(input_text: str) -> subprocess.CompletedProcess:
+    """Run the hook with arbitrary (possibly unparsable) stdin."""
+    return subprocess.run(
+        [sys.executable, "-m", "fastedit.hook"],
+        input=input_text,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
 @pytest.mark.parametrize(
     "ext",
     [".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go",
-     ".java", ".cpp", ".rb", ".swift", ".kt", ".cs", ".php", ".ex"],
+     ".java", ".cpp", ".rb", ".swift", ".kt", ".cs", ".php", ".ex",
+     # B2 triage: these extensions used to fall through, but fastedit now
+     # ships verified grammars for them (html/xml/markdown/json/yaml/css/
+     # bash/toml/sql/dockerfile are hard dependencies), so the hook blocks
+     # built-in Edit exactly as it does for the code languages — the
+     # supported set IS the extension table by design (hook.py derives
+     # SUPPORTED_EXTS from EXTENSION_TO_LANGUAGE).
+     ".html", ".htm", ".xml", ".md", ".json", ".yaml", ".yml",
+     ".css", ".sh", ".bash", ".toml", ".sql"],
 )
 def test_supported_extensions_are_blocked(ext):
     result = run_hook({"tool_input": {"file_path": f"/tmp/example{ext}",
@@ -43,8 +62,12 @@ def test_supported_extensions_are_blocked(ext):
 
 @pytest.mark.parametrize(
     "ext",
-    [".toml", ".md", ".yaml", ".yml", ".json", ".sh", ".txt",
-     ".ini", ".cfg", ".lock", ".env"],
+    # B2 triage: .toml/.md/.yaml/.yml/.json/.sh moved to the BLOCKED list
+    # above (fastedit now ships grammars for them). What remains here are
+    # genuinely grammar-less formats (plain text and formats with no
+    # published tree-sitter wheel — probed in B2: ini/tex/vue/etc.).
+    [".txt", ".ini", ".cfg", ".lock", ".env",
+     ".rst", ".tex", ".vue", ".scala", ".pl"],
 )
 def test_unsupported_extensions_fall_through(ext):
     result = run_hook({"tool_input": {"file_path": f"/tmp/example{ext}",
@@ -52,6 +75,19 @@ def test_unsupported_extensions_fall_through(ext):
                                       "new_string": "b"}})
     assert result.returncode == 0
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize(
+    "bad_input",
+    ["not-json{[", "", "[]", '"just a string"', '{"tool_input": "not-a-dict"}'],
+)
+def test_unparsable_input_falls_through_silently(bad_input):
+    """An unparsable or non-object stdin payload falls open (exit 0, no
+    output) instead of crashing the hook with a traceback."""
+    result = run_hook_raw(bad_input)
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert "Traceback" not in result.stderr
 
 @pytest.mark.parametrize(
     "file_name",

@@ -18,7 +18,6 @@ import pytest
 
 from fastedit.inference.chunked_merge import chunked_merge
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -315,3 +314,63 @@ def test_direct_swap_emits_log_message(tmp_path, caplog):
     # A log line mentioning direct-swap
     joined = "\n".join(record.getMessage() for record in caplog.records)
     assert "Direct-swap" in joined or "direct-swap" in joined.lower()
+
+
+# ---------------------------------------------------------------------------
+# 7. Parse-invalid splice declines to direct-swap (brace languages)
+# ---------------------------------------------------------------------------
+
+RS_FN_ORIGINAL = """\
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+pub fn mul(a: i32, b: i32) -> i32 {
+    a * b
+}
+"""
+
+RS_FN_SNIPPET = """\
+pub fn add(a: i32, b: i32) -> i32 {
+    a.wrapping_add(b)
+}
+"""
+
+RS_FN_EXPECTED = """\
+pub fn add(a: i32, b: i32) -> i32 {
+    a.wrapping_add(b)
+}
+
+pub fn mul(a: i32, b: i32) -> i32 {
+    a * b
+}
+"""
+
+
+def test_parse_invalid_splice_declines_to_direct_swap(tmp_path):
+    """A full-function snippet for a brace language anchors on the signature
+    and the closing brace, so deterministic_edit returns a content-faithful
+    splice that keeps the OLD body line next to the new one — parse-invalid
+    output the CLI/MCP gates would only refuse. The editor must hold its own
+    output to the same structural standard it applies to partial snippets:
+    a parse-invalid merge is discarded, and the qualified direct-swap
+    (complete re-definition, one symbol, balanced braces) produces the
+    whole-symbol replacement instead — the same outcome the identical
+    snippet shape already gets in Python.
+    """
+    file_path = tmp_path / "math.rs"
+    file_path.write_text(RS_FN_ORIGINAL)
+
+    result = chunked_merge(
+        original_code=RS_FN_ORIGINAL,
+        snippet=RS_FN_SNIPPET,
+        file_path=str(file_path),
+        merge_fn=_no_model,
+        language="rust",
+        replace="add",
+    )
+
+    assert result.model_tokens == 0, "direct-swap must not call the model"
+    assert result.chunks_used == 0
+    assert result.parse_valid is True, result.merged_code
+    assert result.merged_code == RS_FN_EXPECTED

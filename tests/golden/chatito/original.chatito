@@ -1,0 +1,4 @@
+%[intent:greet]
+    query: hello
+    query: hi there
+    alias: hi

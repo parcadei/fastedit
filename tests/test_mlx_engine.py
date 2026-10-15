@@ -5,11 +5,10 @@ import os
 import sys
 import time
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
-from unittest.mock import MagicMock, patch, PropertyMock
+from types import ModuleType
+from unittest.mock import MagicMock, patch
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Mock the mlx / mlx_lm ecosystem so tests run without Apple Silicon deps
@@ -221,9 +220,30 @@ def _build_mlx_mocks():
     }
 
 
+# Modules that cache ``fastedit.inference.mlx_engine`` and friends. cli.py and
+# mcp/server.py import MLXEngine lazily INSIDE function bodies, so any earlier
+# suite that constructs a backend (e.g. test_cli.py's multi-edit tests) leaves
+# the REAL engine module -- with `load` bound to the real mlx_lm.load -- in
+# sys.modules. The fixture must evict those entries at SETUP, before the first
+# test in this file imports the engine, or that first test would call the real
+# loader and hit the network for this file's fake repo id (HF 404 on
+# "output/fastedit-4b-mlx": historically misdiagnosed as a missing-model env
+# failure, B44).
+_INFERENCE_MODULES = [
+    "fastedit.inference.mlx_engine",
+    "fastedit.inference.cache_utils",
+    "fastedit.inference.prefix_cache",
+]
+
+
 @pytest.fixture(autouse=True)
 def mlx_mocks():
     """Install mlx/mlx_lm mocks into sys.modules for every test."""
+    # Evict engine modules cached by earlier suites so the engine is always
+    # re-imported fresh, under the mocks installed below.
+    for mod in _INFERENCE_MODULES:
+        sys.modules.pop(mod, None)
+
     modules, mocks = _build_mlx_mocks()
 
     # Patch sys.modules so 'import mlx_lm' works
@@ -274,11 +294,7 @@ def mlx_mocks():
     # Remove cached imports so all inference submodules are re-imported fresh
     # each test with the correct mock classes (cache_utils captures ArraysCache
     # at import time; stale references cause isinstance checks to fail).
-    for mod in [
-        "fastedit.inference.mlx_engine",
-        "fastedit.inference.cache_utils",
-        "fastedit.inference.prefix_cache",
-    ]:
+    for mod in _INFERENCE_MODULES:
         sys.modules.pop(mod, None)
 
 
@@ -296,12 +312,47 @@ class TestMLXEngineInit:
     """Test MLXEngine initialization."""
 
     def test_loads_model_and_tokenizer(self, mlx_mocks):
+        """init() wires mlx_lm.load's return value onto the engine.
+
+        Fully hermetic: mlx/mlx_lm are replaced by the autouse ``mlx_mocks``
+        fixture, so this test runs -- and passes or fails on its merits -- in
+        every environment, with or without Apple Silicon / mlx / a downloaded
+        model. It deliberately does NOT carry a skipif: the historical
+        full-suite failure (HF 404 on the fake repo id "output/fastedit-4b-mlx",
+        tracked as B44) was never a missing-model problem -- it was the real
+        ``fastedit.inference.mlx_engine`` (cached in sys.modules by an earlier
+        suite via cli.py / mcp/server.py's lazy imports) leaking the real
+        ``mlx_lm.load`` into this file's first test. The fixture now evicts
+        those cached modules at setup (see ``_INFERENCE_MODULES``), which is
+        what keeps this test order-independent; skipping it would only hide
+        that seam breaking again.
+
+        Skip condition: none. If this test fails in a full-suite run but
+        passes alone, the fixture's import-seam reset regressed -- fix the
+        fixture, do not add a skip.
+        """
         MLXEngine = _import_engine()
         engine = MLXEngine(model_path="output/fastedit-4b-mlx")
 
         mlx_mocks["load"].assert_called_once_with("output/fastedit-4b-mlx")
         assert engine.model is mlx_mocks["model"]
         assert engine.tokenizer is mlx_mocks["tokenizer"]
+
+    def test_engine_module_reimports_under_mocks(self, mlx_mocks):
+        """Regression pin (B44): the engine module must be mock-bound here.
+
+        Whatever a previous suite left in sys.modules, by the time this file's
+        tests run the fixture must have re-imported
+        ``fastedit.inference.mlx_engine`` fresh, so its module-level ``load``
+        is the mock's loader -- never the real ``mlx_lm.load`` (which would
+        resolve this file's fake repo id over the network). Before the fixture
+        evicted cached engine modules at setup, this assertion failed exactly
+        when the file ran after a backend-constructing suite (e.g. test_cli.py)
+        while passing in isolation.
+        """
+        import fastedit.inference.mlx_engine as engine_module
+
+        assert engine_module.load is mlx_mocks["load"]
 
     def test_stores_kv_config(self, mlx_mocks):
         MLXEngine = _import_engine()
@@ -326,7 +377,7 @@ class TestMLXEngineInit:
 
     def test_custom_model_path(self, mlx_mocks):
         MLXEngine = _import_engine()
-        engine = MLXEngine(model_path="/custom/path")
+        _engine = MLXEngine(model_path="/custom/path")
 
         mlx_mocks["load"].assert_called_once_with("/custom/path")
 
@@ -493,9 +544,21 @@ class TestMLXEngineMerge:
 class TestMLXEngineMergeValidation:
     """Test MLXEngine.merge() with language validation."""
 
+    def _model_stops_on_eos(self, mlx_mocks):
+        """Give the model stub an EOS so generation completes like a real
+        model. B12 (Step 10): a model that never emits EOS now runs to the
+        output cap and is flagged truncated (parse_valid forced False),
+        which would mask the language-validation wiring these tests pin."""
+        FakeArray = mlx_mocks["FakeArray"]
+        eos_id = mlx_mocks["tokenizer"].eos_token_id
+        mlx_mocks["model"].side_effect = (
+            lambda tokens, cache=None: FakeArray([[eos_id]])
+        )
+
     def test_validates_parse_when_language_provided(self, mlx_mocks):
         MLXEngine = _import_engine()
         engine = MLXEngine()
+        self._model_stops_on_eos(mlx_mocks)
 
         mlx_mocks["tokenizer"].decode.return_value = (
             "<updated-code>def foo(): return 1</updated-code>"
@@ -510,6 +573,7 @@ class TestMLXEngineMergeValidation:
     def test_skips_validation_when_no_language(self, mlx_mocks):
         MLXEngine = _import_engine()
         engine = MLXEngine()
+        self._model_stops_on_eos(mlx_mocks)
 
         with patch("fastedit.inference.mlx_engine.validate_parse") as mock_vp:
             result = engine.merge("code", "snippet", language=None)
@@ -519,6 +583,7 @@ class TestMLXEngineMergeValidation:
     def test_reports_invalid_parse(self, mlx_mocks):
         MLXEngine = _import_engine()
         engine = MLXEngine()
+        self._model_stops_on_eos(mlx_mocks)
 
         mlx_mocks["tokenizer"].decode.return_value = (
             "<updated-code>def foo( broken</updated-code>"
@@ -618,7 +683,7 @@ class TestPromptCacheManager:
         CacheManager = _import_cache_manager()
         cache_dir = tmp_path / "nested" / "cache" / "dir"
         assert not cache_dir.exists()
-        mgr = CacheManager(cache_dir=str(cache_dir))
+        _mgr = CacheManager(cache_dir=str(cache_dir))
         assert cache_dir.exists()
 
     def test_put_and_get_roundtrip(self, mlx_mocks, tmp_path):
@@ -870,11 +935,11 @@ def _mock_seq_len(input_tokens):
 def _import_speculative_helpers():
     """Import speculative decoding helpers after mocks are installed."""
     from fastedit.inference.mlx_engine import (
-        _snapshot_ssm_caches,
-        _restore_ssm_caches,
-        _trim_kv_caches,
         _prefill_prompt,
+        _restore_ssm_caches,
+        _snapshot_ssm_caches,
         _speculative_generate,
+        _trim_kv_caches,
     )
     return (
         _snapshot_ssm_caches,
@@ -1186,7 +1251,6 @@ class TestSpeculativeGenerate:
         call_idx = [0]
 
         def model_forward(input_tokens, cache=None):
-            ci = call_idx[0]
             call_idx[0] += 1
 
             n = _mock_seq_len(input_tokens)
@@ -1388,7 +1452,7 @@ class TestSpeculativeGenerate:
         cache_list = [kv, ssm]
         prefill_logits = FakeArray([42])
 
-        result = spec_gen(
+        _result = spec_gen(
             model=model,
             tokenizer=mlx_mocks["tokenizer"],
             cache=cache_list,
@@ -1435,9 +1499,7 @@ class TestSpeculativeGenerate:
         cache_list = [kv]
         prefill_logits = FakeArray([42])
 
-        initial_offset = kv.offset
-
-        result = spec_gen(
+        _result = spec_gen(
             model=model,
             tokenizer=mlx_mocks["tokenizer"],
             cache=cache_list,
@@ -1565,7 +1627,7 @@ class TestSpeculativeGenerate:
         cache = [FakeKVCache(offset=100)]
         prefill_logits = FakeArray([42])
 
-        result = spec_gen(
+        _result = spec_gen(
             model=model,
             tokenizer=mlx_mocks["tokenizer"],
             cache=cache,

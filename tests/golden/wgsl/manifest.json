@@ -1,0 +1,23 @@
+{
+  "language": "wgsl",
+  "ext": "wgsl",
+  "filename": "original.wgsl",
+  "symbol_semantics": "shader entry points (fn with @ attributes) — but fastedit anchoring: none yet",
+  "ops": [],
+  "requires_wheel": "tree_sitter_language_pack",
+  "census_fixture": true,
+  "unsupported": [
+    {
+      "op": "insert_after",
+      "reason": "fastedit's declarative symbol anchoring (_FUNCTION_LIKE_NODE_TYPES / _CLASS_LIKE_NODE_TYPES / _CONST_LIKE_NODE_TYPES / _FORMAT_SYMBOL_SPECS in src/fastedit/inference/ast_utils.py) has no row for this language yet: the in-memory symbol map is empty and the op fails loud with 'Symbol not found' rather than guessing an anchor. Adding the one declarative anchoring row and flipping this to an exercised golden op is future F-series work — declared here, never silent."
+    },
+    {
+      "op": "replace_symbol",
+      "reason": "fastedit's declarative symbol anchoring (_FUNCTION_LIKE_NODE_TYPES / _CLASS_LIKE_NODE_TYPES / _CONST_LIKE_NODE_TYPES / _FORMAT_SYMBOL_SPECS in src/fastedit/inference/ast_utils.py) has no row for this language yet: the in-memory symbol map is empty and the op fails loud with 'Symbol not found' rather than guessing an anchor. Adding the one declarative anchoring row and flipping this to an exercised golden op is future F-series work — declared here, never silent."
+    },
+    {
+      "op": "delete_symbol",
+      "reason": "fastedit's declarative symbol anchoring (_FUNCTION_LIKE_NODE_TYPES / _CLASS_LIKE_NODE_TYPES / _CONST_LIKE_NODE_TYPES / _FORMAT_SYMBOL_SPECS in src/fastedit/inference/ast_utils.py) has no row for this language yet: the in-memory symbol map is empty and the op fails loud with 'Symbol not found' rather than guessing an anchor. Adding the one declarative anchoring row and flipping this to an exercised golden op is future F-series work — declared here, never silent."
+    }
+  ]
+}

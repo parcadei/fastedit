@@ -20,7 +20,7 @@ from ..data_gen.ast_analyzer import validate_parse
 
 # --- Re-export all public types and functions for backward compatibility ---
 # All existing `from fastedit.inference.mlx_engine import X` imports continue to work.
-from .cache_utils import (  # noqa: F401
+from .cache_utils import (
     _clone_cache,
     _compute_cache_key,
     _find_realign_point,
@@ -31,11 +31,69 @@ from .cache_utils import (  # noqa: F401
     _snapshot_ssm_caches,
     _trim_kv_caches,
 )
-from .merge import MergeResult, _extract_output, build_prompt
-from .prefix_cache import (  # noqa: F401
+from .merge import MergeResult, _extract_output_or_flag, build_prompt
+from .prefix_cache import (
     PromptCacheManager,
     TokenPrefixCache,
 )
+
+# ---------------------------------------------------------------------------
+# B12: output-token cap and stop-reason detection
+# ---------------------------------------------------------------------------
+
+# The model reproduces the original file with the edit applied, so output
+# scales with input size — but edits can GROW the file (large insertions),
+# so the cap must leave real headroom over a 1:1 reproduction, and small
+# files need a floor so a tiny edit adding a large block is not cut off
+# (the old `max(2048, 2 * input)` floor silently truncated large
+# insertions mid-payload). The cap always stays finite: ``min`` with the
+# engine's ``max_tokens`` bounds it.
+OUTPUT_CAP_FLOOR_TOKENS = 8192
+OUTPUT_CAP_INPUT_MULTIPLIER = 4
+
+
+def _compute_output_cap(max_tokens: int, input_code_tokens: int) -> int:
+    """Output-token cap for one merge call (B12).
+
+    Formula::
+
+        min(max_tokens, max(OUTPUT_CAP_FLOOR_TOKENS,
+                            OUTPUT_CAP_INPUT_MULTIPLIER * input_code_tokens))
+
+    i.e. at least ``OUTPUT_CAP_FLOOR_TOKENS`` (so small-file insertions
+    have real headroom), scaling at ``OUTPUT_CAP_INPUT_MULTIPLIER`` times
+    the input's token count (reproduction plus edit growth), and never
+    exceeding the engine's ``max_tokens`` (so the bound is finite even on
+    huge inputs).
+    """
+    return min(
+        max_tokens,
+        max(
+            OUTPUT_CAP_FLOOR_TOKENS,
+            OUTPUT_CAP_INPUT_MULTIPLIER * input_code_tokens,
+        ),
+    )
+
+
+def _stopped_on_token_cap(
+    token_ids: list[int],
+    cap: int,
+    eos_token_ids: set[int],
+) -> bool:
+    """B12: True when generation ended at the token cap, not at EOS.
+
+    Every generation-loop exit either appends an EOS token last (the
+    model chose to stop — a complete response) or fills the cap (the
+    response was cut off mid-payload). A cap-filled response is truncated
+    even when its text happens to extract cleanly: the model never chose
+    to stop, so anything after the cap — including the closing tag on
+    later re-runs — is untrustworthy.
+    """
+    if not token_ids:
+        return False
+    if token_ids[-1] in eos_token_ids:
+        return False
+    return len(token_ids) >= cap
 
 
 def _speculative_generate(
@@ -96,7 +154,7 @@ def _speculative_generate(
         return generated_tokens
 
     # Phase 1: Generate autoregressively until <updated-code> tag is detected.
-    UPDATED_CODE_TAG = "<updated-code>"  # noqa: N806
+    UPDATED_CODE_TAG = "<updated-code>"
     tag_found = False
 
     y = mx.array([first_token], dtype=mx.uint32)
@@ -308,7 +366,24 @@ class MLXEngine:
         cache_dir: str | None = None,
         max_cache_bytes: int = 2 * 1024 * 1024 * 1024,
     ):
-        self.model, self.tokenizer = load(model_path)
+        # Issue #12: transformers prints its tokenizer-conversion warnings
+        # (e.g. the Mistral `fix_mistral_regex` notice) on EVERY engine
+        # init, burying fastedit's own model-path diagnostics. Scope the
+        # suppression to the load itself — transformers' verbosity drops to
+        # ERROR around `load()` and is RESTORED afterwards, so real load
+        # failures still surface and no other library's logging is muted
+        # for the process lifetime. (transformers.logging is an attribute
+        # alias of transformers.utils.logging, so it is imported as an
+        # attribute, not a submodule.)
+        import transformers
+
+        _hf_logging = transformers.logging
+        _prev_verbosity = _hf_logging.get_verbosity()
+        _hf_logging.set_verbosity_error()
+        try:
+            self.model, self.tokenizer = load(model_path)
+        finally:
+            _hf_logging.set_verbosity(_prev_verbosity)
         self.kv_bits = kv_bits
         self.kv_group_size = kv_group_size
         self.max_tokens = max_tokens
@@ -449,11 +524,11 @@ class MLXEngine:
             kv_bits=self.kv_bits,
         )
 
-        # Cap output tokens: model reproduces the original code with edits,
-        # so output should never exceed 2x the input code tokens.
-        # This prevents OOM from runaway generation on large inputs.
+        # Cap output tokens (B12): the model reproduces the original code
+        # with edits, so output scales with input size with headroom for
+        # insertions. See _compute_output_cap for the formula.
         input_code_tokens = len(self.tokenizer.encode(original_code))
-        output_cap = min(self.max_tokens, max(2048, input_code_tokens * 2))
+        output_cap = _compute_output_cap(self.max_tokens, input_code_tokens)
 
         token_ids: list[int] = []
         first_token_arr = mx.argmax(prefill_logits[:, -1, :], axis=-1)
@@ -478,16 +553,25 @@ class MLXEngine:
 
         elapsed_ms = (time.perf_counter() - start) * 1000
 
+        # B12: a generation that filled the output cap without the model
+        # emitting EOS was cut off mid-payload — flag it so the result is
+        # error-shaped and nothing downstream splices/persists it.
+        truncated_cap = _stopped_on_token_cap(token_ids, output_cap, eos_token_ids)
+
         # Decode and extract merged code
         raw_text = self.tokenizer.decode(token_ids)
-        merged_code = _extract_output(raw_text)
+        merged_code, truncated = _extract_output_or_flag(raw_text)
+        truncated = truncated or truncated_cap
 
         tokens_generated = len(token_ids)
         tps = (tokens_generated / (elapsed_ms / 1000)) if elapsed_ms > 0 else 0.0
 
-        # Optional AST validation
-        parse_valid = True
-        if language:
+        # Optional AST validation. B11: a truncated extraction is
+        # error-shaped — parse_valid is forced False so every consumer
+        # gating on parse validity refuses to persist the best-effort
+        # payload.
+        parse_valid = not truncated
+        if not truncated and language:
             parse_valid = validate_parse(merged_code, language)
 
         return MergeResult(
@@ -497,6 +581,7 @@ class MLXEngine:
             latency_ms=elapsed_ms,
             tokens_per_second=tps,
             ttft_ms=ttft_ms,
+            truncated=truncated,
         )
 
     # Threshold: files with fewer draft tokens than this use plain AR
@@ -651,10 +736,9 @@ class MLXEngine:
 
         ttft_ms = (time.perf_counter() - start) * 1000
 
-        # Cap output tokens: model reproduces the original code with edits,
-        # so output should never exceed 2x the input code tokens.
+        # Cap output tokens (B12): see _compute_output_cap for the formula.
         input_code_tokens = len(original_draft_tokens)
-        output_cap = min(self.max_tokens, max(2048, input_code_tokens * 2))
+        output_cap = _compute_output_cap(self.max_tokens, input_code_tokens)
 
         # Run speculative generation
         token_ids = _speculative_generate(
@@ -672,16 +756,25 @@ class MLXEngine:
 
         elapsed_ms = (time.perf_counter() - start) * 1000
 
+        # B12: a generation that filled the output cap without the model
+        # emitting EOS was cut off mid-payload — flag it so the result is
+        # error-shaped and nothing downstream splices/persists it. Every
+        # _speculative_generate exit path appends EOS last when the model
+        # chose to stop, so the last-token check distinguishes the two.
+        truncated_cap = _stopped_on_token_cap(token_ids, output_cap, eos_token_ids)
+
         # Decode and extract merged code
         raw_text = self.tokenizer.decode(token_ids)
-        merged_code = _extract_output(raw_text)
+        merged_code, truncated = _extract_output_or_flag(raw_text)
+        truncated = truncated or truncated_cap
 
         tokens_generated = len(token_ids)
         tps = (tokens_generated / (elapsed_ms / 1000)) if elapsed_ms > 0 else 0.0
 
-        # Optional AST validation
-        parse_valid = True
-        if language:
+        # Optional AST validation. B11: same error-shaped contract as
+        # merge() — parse_valid is forced False on truncation.
+        parse_valid = not truncated
+        if not truncated and language:
             parse_valid = validate_parse(merged_code, language)
 
         return MergeResult(
@@ -691,4 +784,5 @@ class MLXEngine:
             latency_ms=elapsed_ms,
             tokens_per_second=tps,
             ttft_ms=ttft_ms,
+            truncated=truncated,
         )

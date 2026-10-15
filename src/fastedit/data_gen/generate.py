@@ -113,7 +113,7 @@ async def generate_edit_pair(
             )
     except BadRequestError:
         return None
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- deliberate: one bad API response must not abort a long generation run; report and skip
         print(f"  API error: {e}")
         return None
 
@@ -223,7 +223,7 @@ async def generate_from_repo(
     total_output_tokens = 0
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w") as f:
+    with open(output_path, "w") as f:  # noqa: ASYNC230 -- offline data-gen script: blocking local JSONL writes are intentional, no aiofiles dependency wanted
         for coro in tqdm(asyncio.as_completed(async_tasks), total=len(async_tasks), desc="Generating"):
             result = await coro
             if result is None:
@@ -266,7 +266,7 @@ async def generate_from_repo(
     }
 
     stats_path = output_path.with_suffix(".stats.json")
-    with open(stats_path, "w") as f:
+    with open(stats_path, "w") as f:  # noqa: ASYNC230 -- offline data-gen script: blocking local write is intentional
         json.dump(stats, f, indent=2)
 
     print(f"\nDone: {valid_count} valid, {invalid_count} invalid")

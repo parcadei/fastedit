@@ -10,10 +10,13 @@ from __future__ import annotations
 
 import textwrap
 
-import pytest
-
-from fastedit.inference.text_match import _adjust_indent, _is_marker, deterministic_edit
-
+from fastedit.inference.chunked_merge import _is_marker_line
+from fastedit.inference.text_match import (
+    _adjust_indent,
+    _is_marker,
+    deterministic_edit,
+    snippet_has_keep_marker,
+)
 
 # ---------------------------------------------------------------------------
 # _is_marker
@@ -65,8 +68,97 @@ class TestIsMarker:
         assert _is_marker("# existing code") is False
 
     def test_marker_embedded_in_longer_line(self):
-        # Marker phrase is a substring
-        assert _is_marker("    # ... existing code ... (keep this)") is True
+        # Line-anchored contract (B15): a marker phrase embedded in a
+        # longer line is CONTENT, not a keep-marker. Only a line whose
+        # stripped content IS a marker phrase (or a short form) counts.
+        assert _is_marker("    # ... existing code ... (keep this)") is False
+
+
+class TestIsMarkerLineAnchored:
+    """B15 — marker detection is LINE-ANCHORED, never substring-based.
+
+    A line is a marker iff its stripped content exactly equals one of the
+    canonical marker phrases or matches one of the short-form regexes
+    (``#...``, ``//...``, ``…``). A marker phrase embedded mid-line is
+    real code/comment content.
+    """
+
+    def test_exact_marker_line_is_marker(self):
+        """A line that IS a marker (long form, spaced short form, short
+        form, unicode ellipsis) is detected under leading indentation."""
+        marker_lines = [
+            "# ... existing code ...",
+            "// ... existing code ...",
+            "# ...",
+            "// ...",
+            "#...",
+            "//...",
+            "…",
+        ]
+        indents = ["", "    ", "\t", "        "]
+        for indent in indents:
+            for marker in marker_lines:
+                assert _is_marker(indent + marker) is True, (
+                    f"{indent!r} + {marker!r} must be a marker line"
+                )
+
+    def test_embedded_marker_phrase_is_not_marker(self):
+        """A marker phrase EMBEDDED in a real code/comment line is
+        content, not a keep-marker (B15: substring matching swallowed
+        such lines and suppressed preserved-suffix emission)."""
+        assert _is_marker("x = compute(a)  # ... see docs for details") is False
+        assert _is_marker("// handle ... existing code ... gracefully") is False
+        assert _is_marker("    # ... existing code ... (keep this)") is False
+
+    def test_marker_predicate_shared_across_modules(self):
+        """``_is_marker_line`` (chunked_merge) IS ``_is_marker`` (text_match).
+
+        One definition of "is this line a marker" in the codebase: both
+        module-level names alias the shared predicate in
+        :mod:`fastedit.inference.markers`.
+        """
+        assert _is_marker_line is _is_marker
+        cases = [
+            "# ... existing code ...",
+            "    // ... existing code ...",
+            "# ...",
+            "// ...",
+            "#...",
+            "    //...",
+            "…",
+            "x = compute(a)  # ... see docs for details",
+            "// handle ... existing code ... gracefully",
+            "",
+            "    ",
+            "x = 1",
+            "# existing code",
+            "...",
+        ]
+        for case in cases:
+            assert _is_marker_line(case) is _is_marker(case), case
+
+
+class TestSnippetHasKeepMarkerRustShape:
+    """B42b / TRDD-CMRMA2YG — the Rust keep-marker shape stays detected."""
+
+    def test_marker_after_lifetime_and_later_apostrophe_is_detected(self):
+        """A keep-marker in a comment after a Rust lifetime plus a later
+        apostrophe is still detected by ``snippet_has_keep_marker``.
+
+        ``let s: &'static str;  // ... existing code ... don't`` — the
+        apostrophe in ``'static`` pairs with the one in ``don't`` which
+        sits AFTER the marker. A quote scanner that accepted that pairing
+        entered string mode, never saw the ``//``, missed the marker, let
+        the partial snippet splice, and dropped code silently at exit 0.
+        A pairing that SPANS a comment opener is lexical noise, not a
+        string.
+        """
+        a = chr(39)
+        line = (
+            "let s: &" + a + "static str;  "
+            "// ... existing code ... don" + a + "t"
+        )
+        assert snippet_has_keep_marker(line) is True
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +288,20 @@ class TestDeterministicEditBasic:
 
 
 class TestDeterministicEditReplaceMode:
-    """Tests for replace mode (no marker, drop gap lines)."""
+    """Tests for marker-free sections (preserve-by-default).
+
+    UPDATED (preserve-by-default): a marker-free gap is never dropped.
+    Unmentioned original lines survive; a snippet that omits gap content
+    between two restated anchors is an ambiguous deletion and declines to
+    the model; ``max_drop_gap`` is a deprecated no-op.
+    """
 
     def test_replace_single_line(self):
+        # UPDATED (preserve-by-default): a snippet line that shares only the
+        # assignment LHS with a preserved line (``y = new_value`` vs
+        # ``y = old_value``) is an AMBIGUOUS REWRITE in a marker-free
+        # section — the editor declines instead of emitting a duplicate or
+        # an unjustified deletion. The model path resolves the rewrite.
         original = textwrap.dedent("""\
             def foo():
                 x = 1
@@ -210,19 +313,19 @@ class TestDeterministicEditReplaceMode:
                 y = new_value
                 return x + y""")
         result = deterministic_edit(original, snippet)
-        assert result is not None
-        assert "y = new_value" in result
-        assert "y = old_value" not in result
+        assert result is None
 
-    def test_replace_drops_gap_lines(self):
-        # Lines between two context anchors are dropped (replaced)
+    def test_no_marker_gap_lines_preserved(self):
+        # UPDATED (preserve-by-default, was ``test_replace_drops_gap_lines``):
+        # lines between two context anchors are PRESERVED when the snippet
+        # has no marker; the new line is an insertion, not a replacement.
         original = textwrap.dedent("""\
             def foo():
                 a = 1
                 b = 2
                 c = 3
                 return a""")
-        # Snippet keeps a=1 and return, drops b and c, adds z
+        # Snippet keeps a=1 and return, says nothing about b and c, adds z
         snippet = textwrap.dedent("""\
             def foo():
                 a = 1
@@ -231,8 +334,8 @@ class TestDeterministicEditReplaceMode:
         result = deterministic_edit(original, snippet)
         assert result is not None
         assert "z = 99" in result
-        assert "b = 2" not in result
-        assert "c = 3" not in result
+        assert "b = 2" in result
+        assert "c = 3" in result
 
     def test_large_gap_without_marker_returns_none(self):
         # A gap larger than max_drop_gap without marker -> None
@@ -247,7 +350,10 @@ class TestDeterministicEditReplaceMode:
         assert result is None
 
     def test_gap_at_max_drop_gap_succeeds(self):
-        # Gap of exactly max_drop_gap should succeed
+        # UPDATED (preserve-by-default): a snippet that restates only the
+        # endpoints of a 20-line body omits the gap content — an ambiguous
+        # deletion — so it declines regardless of max_drop_gap (now a
+        # deprecated no-op). The model decides what to keep.
         lines = ["def foo():"]
         for i in range(20):
             lines.append(f"    line_{i} = {i}")
@@ -256,8 +362,7 @@ class TestDeterministicEditReplaceMode:
 
         snippet = "def foo():\n    return 0"
         result = deterministic_edit(original, snippet, max_drop_gap=20)
-        assert result is not None
-        assert "return 0" in result
+        assert result is None
 
     def test_gap_just_over_max_drop_gap_returns_none(self):
         lines = ["def foo():"]
@@ -534,10 +639,11 @@ class TestDeterministicEditRealWorld:
         assert transform_idx < log_idx < validate_idx
 
     def test_modify_return_statement(self):
-        # To replace "return total" with "return total * 2", the snippet
-        # must include the original return line as context so the new line
-        # can be placed relative to it. Without the old line as context,
-        # text-match treats the new line as an addition, not a replacement.
+        # UPDATED (preserve-by-default): the unmentioned ``avg`` line in the
+        # marker-free gap now SURVIVES; the new return is inserted after the
+        # anchor. Replacing the return itself needs the old line as context
+        # or a marker — the snippet below never mentions ``avg``, so it is
+        # preserved verbatim.
         original = textwrap.dedent("""\
             def compute(x, y):
                 total = x + y
@@ -553,12 +659,14 @@ class TestDeterministicEditRealWorld:
         result = deterministic_edit(original, snippet)
         assert result is not None
         assert "return total * 2" in result
-        # The avg line was in the gap (no marker) so it's dropped (replace mode)
-        assert "avg = total / 2" not in result
+        # The unmentioned avg line is preserved (never silently dropped).
+        assert "avg = total / 2" in result
 
     def test_replace_line_by_dropping_gap(self):
-        # The natural way to "replace" a line: include anchors on both sides,
-        # new line replaces the gap between them.
+        # UPDATED (preserve-by-default): ``result = total * 2`` shares only
+        # the assignment LHS with the preserved ``result = total`` — an
+        # AMBIGUOUS REWRITE in a marker-free section. The editor declines
+        # (no duplicate, no unjustified deletion); the model resolves it.
         original = textwrap.dedent("""\
             def compute(x, y):
                 total = x + y
@@ -571,9 +679,7 @@ class TestDeterministicEditRealWorld:
                 result = total * 2
                 return result""")
         result = deterministic_edit(original, snippet)
-        assert result is not None
-        assert "result = total * 2" in result
-        assert "result = total\n" not in result
+        assert result is None
 
     def test_add_method_with_marker_in_class(self):
         original = textwrap.dedent("""\
@@ -716,12 +822,14 @@ class TestDeterministicEditEdgeCases:
         assert result is None
 
     def test_max_drop_gap_one(self):
-        # max_drop_gap=1 allows exactly 1 line gap
+        # UPDATED (preserve-by-default): a one-line unmentioned gap between
+        # two restated anchors is an ambiguous omission — decline (the old
+        # "allow exactly 1 dropped line" contract is retired with the
+        # gap-drop semantics; max_drop_gap is a deprecated no-op).
         original = "def foo():\n    a = 1\n    b = 2\n    return a"
         snippet = "def foo():\n    a = 1\n    return a"
         result = deterministic_edit(original, snippet, max_drop_gap=1)
-        assert result is not None
-        assert "b = 2" not in result
+        assert result is None
 
     def test_only_markers_no_context(self):
         # Markers alone don't count as context anchors
@@ -731,17 +839,13 @@ class TestDeterministicEditEdgeCases:
         assert result is None
 
     def test_forward_scan_order_preserving(self):
-        # Context matching is forward-scan, order-preserving
-        # If snippet reorders lines, later matches may fail
+        # UPDATED (preserve-by-default): the snippet restates the endpoints
+        # but omits ``b = 2`` — an ambiguous omission between two anchors —
+        # so the editor declines instead of silently keeping or dropping it.
         original = "def foo():\n    a = 1\n    b = 2\n    c = 3\n    return a"
-        # Reversed context -> "b = 2" would have to appear before "a = 1" in original
-        # But forward scan will find a=1 at position 1, then b=2 at position 2
-        # and c=3 at position 3 -- still works because the order in snippet matches original
         snippet = "def foo():\n    a = 1\n    c = 3\n    return a"
         result = deterministic_edit(original, snippet)
-        assert result is not None
-        # b=2 is in the gap between a=1 and c=3, dropped (replace mode)
-        assert "b = 2" not in result
+        assert result is None
 
     def test_duplicate_lines_forward_scan(self):
         # Forward scan picks the first match from cursor
@@ -1225,15 +1329,13 @@ class TestDeterministicEditContextAnchorIndent:
         assert "    opened = open_file(path)" not in result_lines
 
     def test_per_anchor_delta_two_anchors_shifted_uniformly(self):
-        # Two context anchors both shifted by +4 (the rust/02 shape):
-        # the signature line differs between orig and snippet (so it's
-        # not a context anchor), and the body anchors — `let raw` and
-        # `serde_json::...` — appear in both but the snippet places them
-        # at +4sp deeper because of the closure wrap. Fix D's baseline
-        # expected_diff is established by the FIRST real context anchor
-        # (`let raw`), so the second (`serde_json::...`) at the same
-        # uniform shift is consistent and accepted. Both must emit at
-        # the snippet's deeper indent.
+        # UPDATED (preserve-by-default): this wrap rewrites the body tail
+        # (``z`` is restated inside the new closure while the original `z`
+        # sits in the marker-free gap). Restating a preserved line at a
+        # different indent is an ambiguous rewrite — the editor declines
+        # and the model performs the wrap. (The M13 per-anchor indent
+        # behavior this test pinned is exercised by test_tab_indentation_
+        # consistency, whose wrap is a pure insertion.)
         original = textwrap.dedent("""\
             fn helper(x: i32) -> i32 {
                 let y = compute(x);
@@ -1249,14 +1351,7 @@ class TestDeterministicEditContextAnchorIndent:
                 })
             }""")
         result = deterministic_edit(original, snippet)
-        assert result is not None
-        # Body anchor lines emit shifted +4 (8sp inside the wrapped block).
-        assert "        let y = compute(x);" in result
-        assert "        let z = normalize(y);" in result
-        # The original 4sp versions should NOT appear.
-        result_lines = result.splitlines()
-        assert "    let y = compute(x);" not in result_lines
-        assert "    let z = normalize(y);" not in result_lines
+        assert result is None
 
     def test_tab_indentation_consistency(self):
         # Original uses tabs. Snippet wraps in another scope using tabs.

@@ -1,0 +1,44 @@
+{
+  "language": "rust",
+  "ext": "rs",
+  "filename": "original.rs",
+  "symbol_semantics": "functions, structs/enums/traits/impls, const/static items",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "alpha",
+      "snippet": "fn gamma(z: i32) -> i32 {\n    z - 1\n}\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 3,
+        "anchor_end_line": 5
+      },
+      "expected": "expected_insert_after_alpha.rs"
+    },
+    {
+      "op": "replace_symbol",
+      "symbol": "beta",
+      "snippet": "fn beta(y: i32) -> i32 {\n    y * 3\n}\n",
+      "path": "direct_swap",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 11,
+        "end_line": 13
+      },
+      "expected": "expected_replace_symbol_beta.rs"
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "LIMIT",
+      "snippet": null,
+      "path": null,
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 1,
+        "end_line": 1
+      },
+      "expected": "expected_delete_symbol_LIMIT.rs"
+    }
+  ]
+}

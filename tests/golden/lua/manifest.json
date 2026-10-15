@@ -1,0 +1,21 @@
+{
+  "language": "lua",
+  "ext": "lua",
+  "filename": "original.lua",
+  "symbol_semantics": "function declarations, dotted names verbatim (`M.alpha`). all-grammars extra: extension-unwired by design, so the golden runner passes the language explicitly (the resolver's `resolve when requested explicitly` contract)",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "M.alpha",
+      "snippet": "function M.gamma(z)\n  return z - 1\nend\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 3,
+        "anchor_end_line": 5
+      },
+      "expected": "expected_insert_after_M_alpha.lua"
+    }
+  ],
+  "requires_wheel": "tree_sitter_lua"
+}

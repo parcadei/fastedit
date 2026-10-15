@@ -1,0 +1,44 @@
+{
+  "language": "cpp",
+  "ext": "cpp",
+  "filename": "original.cpp",
+  "symbol_semantics": "functions, class/struct specifiers",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "alpha",
+      "snippet": "int gamma(int z) {\n    return z - 1;\n}\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 8,
+        "anchor_end_line": 10
+      },
+      "expected": "expected_insert_after_alpha.cpp"
+    },
+    {
+      "op": "replace_symbol",
+      "symbol": "beta",
+      "snippet": "int beta(int y) {\n    return y * 3;\n}\n",
+      "path": "direct_swap",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 12,
+        "end_line": 14
+      },
+      "expected": "expected_replace_symbol_beta.cpp"
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "alpha",
+      "snippet": null,
+      "path": null,
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 8,
+        "end_line": 10
+      },
+      "expected": "expected_delete_symbol_alpha.cpp"
+    }
+  ]
+}

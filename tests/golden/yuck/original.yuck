@@ -1,0 +1,3 @@
+(defwidget bar []
+  (box :orientation "h"
+    (label :text "hello")))

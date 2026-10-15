@@ -1,0 +1,12 @@
+body {
+  color: #333;
+  margin: 0 auto;
+}
+
+.header {
+  font-weight: bold;
+}
+
+.footer {
+  padding: 4px;
+}

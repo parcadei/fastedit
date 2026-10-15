@@ -62,7 +62,7 @@ def test_unsupported_extensions_ignored(repo: Path):
 def test_strings_and_comments_skipped(repo: Path):
     plan = do_cross_file_rename(repo, "target", "renamed")
     a = plan[repo / "src" / "a.py"]
-    new_content, count, skipped = a
+    new_content, count, skipped, _read_stat = a
     assert count == 1
     assert skipped == 1
     assert "docstring: target" in new_content
@@ -151,7 +151,7 @@ def test_kind_filter_class_only(tmp_path: Path):
     )
     plan = do_cross_file_rename(tmp_path, "MySymbol", "RenamedSymbol", kind_filter="class")
     assert (tmp_path / "a.py") in plan, "class rename under kind_filter='class' must apply"
-    new_content, count, _ = plan[tmp_path / "a.py"]
+    new_content, count, _, _read_stat = plan[tmp_path / "a.py"]
     assert "class RenamedSymbol" in new_content
     assert "print(RenamedSymbol)" in new_content
     assert count == 2
@@ -186,7 +186,7 @@ def test_ast_verified_strings_and_comments_skipped(tmp_path: Path):
 
     plan = do_cross_file_rename(tmp_path, "target", "renamed")
     assert path in plan
-    new_content, count, _ = plan[path]
+    new_content, count, _, _read_stat = plan[path]
 
     # Only the def + the final call() site should change — 2 real refs.
     assert count == 2, f"expected 2 real refs, got {count}"
@@ -215,7 +215,7 @@ def test_kind_filter_none_renames_everything(tmp_path: Path):
     (tmp_path / "a.py").write_text("def worker(): pass\nworker()\n")
     plan = do_cross_file_rename(tmp_path, "worker", "labor", kind_filter=None)
     assert (tmp_path / "a.py") in plan
-    new_content, count, _ = plan[tmp_path / "a.py"]
+    new_content, count, _, _read_stat = plan[tmp_path / "a.py"]
     assert count == 2
     assert "def labor()" in new_content
 
@@ -261,7 +261,7 @@ def test_tldr_driven_skipped_count_matches_docstring_mentions(tmp_path: Path):
     )
     plan = do_cross_file_rename(tmp_path, "widget", "gadget")
     assert path in plan
-    new_content, count, skipped = plan[path]
+    new_content, count, skipped, _read_stat = plan[path]
     # Two real refs: the def and the call.
     assert count == 2
     # Three docstring mentions + zero comment hits (none) = 3 skipped.

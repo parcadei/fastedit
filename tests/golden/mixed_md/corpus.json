@@ -1,0 +1,49 @@
+{
+  "fixture": "mixed_md",
+  "description": "Step D4 flagship corpus: a realistic mixed-language .md article (English intro, Chinese paragraphs, fenced python+go code with mixed zh/en comments, an embedded html widget with lang=\"zh-CN\", well-formed frontmatter, and ONE deliberately unclosed fence in an unrelated section — the req. 9 malformed trait).",
+  "language": "markdown",
+  "filename": "original.md",
+  "expected": "expected_translate_comments.md",
+  "op": "replace every Chinese comment with its declared English translation; every other byte identical (line-splice oracle: expected = original with each zh comment LINE swapped for its translation line)",
+  "translations": [
+    {
+      "zh": "    # 遍历所有用户 / iterate all users",
+      "en": "    # Iterate all users.",
+      "note": "mixed zh+en comment (the inline English gloss is part of the zh comment line being replaced)"
+    },
+    {
+      "zh": "        # 累加订单金额 (sum the order amounts)",
+      "en": "        # Sum the order amounts.",
+      "note": "mixed zh+en comment (parenthesised gloss)"
+    },
+    {
+      "zh": "    // 打开输出文件 / open the output file",
+      "en": "    // Open the output file.",
+      "note": "go comment, mixed zh+en"
+    },
+    {
+      "zh": "    // 逐行写入报表 (write the report row by row)",
+      "en": "    // Write the report row by row.",
+      "note": "go comment, mixed zh+en"
+    }
+  ],
+  "preserved_english_comments": [
+    "    # The per-region quota must not be exceeded",
+    "    # Keep the report id stable across reruns",
+    "    // The header row is written once, before any data"
+  ],
+  "traits": {
+    "frontmatter": {
+      "delimiters": ["---", "---"],
+      "keys": ["title: 用户数据流水线说明", "lang: zh-CN"]
+    },
+    "fence_info_strings": ["python", "go", "html", ""],
+    "unclosed_fence_opener": "~~~",
+    "embedded_html_lang": "lang=\"zh-CN\""
+  },
+  "gigo": {
+    "malformed_trait": "md_fence_unclosed",
+    "location": "the last fence of the file (appendix section) opens with ``` and is never closed",
+    "expectation": "preserved as-is by any edit that does not target it (req. 9 EDIT-NOT-CORRECT)"
+  }
+}

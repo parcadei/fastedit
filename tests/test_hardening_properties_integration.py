@@ -34,13 +34,8 @@ from pathlib import Path
 
 import pytest
 
-from fastedit.inference.caller_safety import (
-    check_cross_file_callers,
-    signature_changed,
-)
 from fastedit.inference.move_to_file import move_to_file
 from fastedit.inference.rename import do_cross_file_rename, do_rename_ast
-
 
 TLDR_AVAILABLE = shutil.which("tldr") is not None
 
@@ -86,14 +81,14 @@ def test_prop_rename_all_idempotent_python(tmp_path: Path):
     plan1 = do_cross_file_rename(root, "oldFunc", "newFunc")
     assert plan1, "baseline rename found 0 files"
     # Apply the plan.
-    for path, (new_content, _, _) in plan1.items():
+    for path, (new_content, _, _, _read_stat) in plan1.items():
         path.write_text(new_content)
 
     # Second pass.
     plan2 = do_cross_file_rename(root, "oldFunc", "newFunc")
     assert plan2 == {}, (
         f"idempotence broken: second rename found "
-        f"{sum(c for _, c, _ in plan2.values())} refs in "
+        f"{sum(c for _content, c, _skipped, _stat in plan2.values())} refs in "
         f"{len(plan2)} files. {plan2}"
     )
 
@@ -295,8 +290,8 @@ def test_prop_kind_filter_monotonic(tmp_path: Path):
     plan_no_filter = do_cross_file_rename(root, "Foo", "Bar")
     plan_class = do_cross_file_rename(root, "Foo", "Bar", kind_filter="class")
 
-    files_no_filter = {p.name for p in plan_no_filter.keys()}
-    files_class = {p.name for p in plan_class.keys()}
+    files_no_filter = {p.name for p in plan_no_filter}
+    files_class = {p.name for p in plan_class}
 
     # Monotonicity: every file in plan_class must appear in plan_no_filter.
     assert files_class.issubset(files_no_filter), (
@@ -305,12 +300,12 @@ def test_prop_kind_filter_monotonic(tmp_path: Path):
     )
 
     # Count-wise: per-file count in plan_class <= count in plan_no_filter.
-    for path, (_, class_count, _) in plan_class.items():
+    for path, (_new_content, class_count, _skipped, _read_stat) in plan_class.items():
         matching = [
             v for k, v in plan_no_filter.items() if k.name == path.name
         ]
         if matching:
-            _, full_count, _ = matching[0]
+            _full_content, full_count, _full_skipped, _full_stat = matching[0]
             assert class_count <= full_count, (
                 f"[{path.name}] kind_filter count {class_count} > "
                 f"unfiltered count {full_count}"
@@ -419,7 +414,7 @@ def test_integ_move_then_rename_cross_file(tmp_path: Path):
     # Step 2: Rename across the project.
     rename_plan = do_cross_file_rename(root, "Foo", "Bar")
     assert rename_plan, "rename plan empty after move"
-    for path, (new_content, _, _) in rename_plan.items():
+    for path, (new_content, _, _, _read_stat) in rename_plan.items():
         path.write_text(new_content)
 
     # Bar now in b.py.
@@ -508,7 +503,7 @@ def test_integ_edit_signature_then_rename(tmp_path: Path):
 
     # Step 2: rename foo -> bar.
     rename_plan = do_cross_file_rename(root, "foo", "bar")
-    for path, (new_content, _, _) in rename_plan.items():
+    for path, (new_content, _, _, _read_stat) in rename_plan.items():
         path.write_text(new_content)
 
     # Post-conditions: a.py has def bar(a, b); b.py imports bar.
@@ -554,7 +549,7 @@ def test_integ_rename_kind_filter_then_delete(tmp_path: Path):
         root, "Foo", "Bar", kind_filter="class",
     )
     assert plan, "class rename plan is empty"
-    for path, (new_content, _, _) in plan.items():
+    for path, (new_content, _, _, _read_stat) in plan.items():
         path.write_text(new_content)
     assert "class Bar" in a.read_text()
 

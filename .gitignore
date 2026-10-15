@@ -8,3 +8,20 @@ dist/
 build/
 .mypy_cache/
 .ruff_cache/
+
+# Agent reports carry absolute paths and internal detail -- never commit them.
+reports/
+reports_dev/
+
+.DS_Store
+docs_dev/
+scripts_dev/
+samples_dev/
+examples_dev/
+tests_dev/
+downloads_dev/
+libs_dev/
+builds_dev/
+
+# Step 21 smoke-test scratch space (script + throwaway project + backups).
+_dev_smoke/

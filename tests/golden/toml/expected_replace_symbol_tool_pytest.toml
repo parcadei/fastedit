@@ -1,0 +1,11 @@
+title = "fastedit"
+
+[package]
+name = "fastedit"
+version = "0.5.0"
+
+[dependencies]
+serde = "1"
+
+[tool.pytest]
+minversion = "8.0"

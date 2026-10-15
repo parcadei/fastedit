@@ -8,7 +8,12 @@ llama.cpp, Ollama, etc.
 from __future__ import annotations
 
 from ..data_gen.ast_analyzer import validate_parse
-from .merge import MergeResult, _extract_output, build_prompt
+from .merge import (
+    MergeResult,
+    _extract_output_or_flag,
+    _response_truncated,
+    build_prompt,
+)
 
 
 class LLMEngine:
@@ -55,12 +60,22 @@ class LLMEngine:
         elapsed_ms = (time.perf_counter() - start) * 1000
 
         raw_output = response.choices[0].message.content or ""
-        merged_code = _extract_output(raw_output)
+        merged_code, truncated = _extract_output_or_flag(raw_output)
+        # B12: a length-capped response is a truncated response even when
+        # its tags balance — the model ran out of tokens before it chose
+        # to stop. Compose with the extraction signal (Step 9): either
+        # one firing makes the result error-shaped (parse_valid=False).
+        if _response_truncated(response):
+            truncated = True
         tokens_generated = response.usage.completion_tokens if response.usage else 0
         tps = (tokens_generated / (elapsed_ms / 1000)) if elapsed_ms > 0 else 0.0
 
-        parse_valid = True
-        if language:
+        # B11: a truncated extraction is error-shaped — parse_valid is
+        # forced False so every consumer gating on parse validity
+        # (chunked_merge retries, MCP parse gate, CLI refusal) refuses
+        # to persist the best-effort payload.
+        parse_valid = not truncated
+        if not truncated and language:
             parse_valid = validate_parse(merged_code, language)
 
         return MergeResult(
@@ -70,6 +85,7 @@ class LLMEngine:
             latency_ms=elapsed_ms,
             tokens_per_second=tps,
             ttft_ms=0.0,
+            truncated=truncated,
         )
 
     def merge_auto(

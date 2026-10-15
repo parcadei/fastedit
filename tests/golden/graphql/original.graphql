@@ -1,0 +1,9 @@
+type User {
+  id: ID!
+  name: String
+}
+
+type Post {
+  id: ID!
+  author: User
+}

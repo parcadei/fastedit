@@ -1,0 +1,8 @@
+{
+  "name": "fastedit",
+  "config": {
+    "debug": true,
+    "level": 3
+  },
+  "tags": ["ast", "edit"]
+}

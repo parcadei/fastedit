@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<config>
+  <server>host1</server>
+
+  <replica>host2</replica>
+
+  <cache enabled="true">redis</cache>
+  <limits>
+    <timeout>30</timeout>
+  </limits>
+</config>

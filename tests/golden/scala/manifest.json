@@ -1,0 +1,21 @@
+{
+  "language": "scala",
+  "ext": "scala",
+  "filename": "original.scala",
+  "symbol_semantics": "objects/classes/traits, defs (methods inside a type)",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "alpha",
+      "snippet": "  def gamma(z: Int): Int = z - 1\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 4,
+        "anchor_end_line": 4
+      },
+      "expected": "expected_insert_after_alpha.scala"
+    }
+  ],
+  "requires_wheel": "tree_sitter_scala"
+}

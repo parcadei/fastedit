@@ -1,0 +1,44 @@
+{
+  "language": "toml",
+  "ext": "toml",
+  "filename": "original.toml",
+  "symbol_semantics": "tables and table-array elements, named by the (possibly dotted) key text; top-level bare pairs are deliberately not symbols — the table is the TOML addressing unit",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "dependencies",
+      "snippet": "[dev-dependencies]\npytest = \"7.0\"\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 7,
+        "anchor_end_line": 9
+      },
+      "expected": "expected_insert_after_dependencies.toml"
+    },
+    {
+      "op": "replace_symbol",
+      "symbol": "tool.pytest",
+      "snippet": "[tool.pytest]\nminversion = \"8.0\"\n",
+      "path": "direct_swap",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 10,
+        "end_line": 11
+      },
+      "expected": "expected_replace_symbol_tool_pytest.toml"
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "package",
+      "snippet": null,
+      "path": null,
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 3,
+        "end_line": 6
+      },
+      "expected": "expected_delete_symbol_package.toml"
+    }
+  ]
+}

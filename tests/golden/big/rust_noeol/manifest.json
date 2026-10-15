@@ -1,0 +1,153 @@
+{
+  "schema": "fastedit-corpus-golden/1",
+  "case": "rust_noeol",
+  "language": "rust",
+  "ext": "rs",
+  "filename": "original.rs",
+  "eol": "\n",
+  "final_eol": false,
+  "indent": "    ",
+  "sprinkle_cjk": false,
+  "seed": 20260215,
+  "target_bytes": 1048576,
+  "actual_bytes": 1048432,
+  "symbol_count": 2838,
+  "max_symbol_lines": 133,
+  "oracle": "tests/corpus.py apply_op_oracle — independent line-splice arithmetic on generator-recorded indices; never imports fastedit, never parses code",
+  "regenerate": "uv run python tests/golden/big/_generate.py",
+  "recipe": {
+    "language": "rust",
+    "target_bytes": 1048576,
+    "eol": "\n",
+    "final_eol": false,
+    "indent": "    ",
+    "seed": 20260215,
+    "sprinkle_cjk": false
+  },
+  "ops": [
+    {
+      "op": "insert_after_symbol",
+      "symbol": "fn_000569",
+      "language": "rust",
+      "ext": "rs",
+      "eol": "\n",
+      "final_eol": false,
+      "note": "insert a fresh rust function after 'fn_000569'",
+      "payload": "fn fn_ins_20260215_a(value_a: i32, value_b: i32) -> i32 {\n    let mut acc_fn_ins_20260215_a = value_a + value_b + 1; // fn_ins_20260215_a step 1\n    acc_fn_ins_20260215_a += 2; // fn_ins_20260215_a step 2\n    acc_fn_ins_20260215_a += 3; // fn_ins_20260215_a step 3\n    acc_fn_ins_20260215_a += 4; // fn_ins_20260215_a step 4\n    acc_fn_ins_20260215_a\n}\n",
+      "oracle": {
+        "anchor_start_line": 5987,
+        "anchor_end_line": 5992,
+        "anchor_last_line": "}\n",
+        "anchor_is_last_line": false,
+        "start_line": null,
+        "end_line": null,
+        "consumed_end_line": null,
+        "original_span_text": null,
+        "sep_before": true,
+        "sep_after": false,
+        "snippet_line_count": 7
+      },
+      "expected": "expected_insert_after_symbol_fn_000569.rs",
+      "inverse": {
+        "kind": "delete",
+        "start_line": 5993,
+        "end_line": 6000,
+        "after_line": 0,
+        "text": ""
+      }
+    },
+    {
+      "op": "replace_symbol_body",
+      "symbol": "fn_001472",
+      "language": "rust",
+      "ext": "rs",
+      "eol": "\n",
+      "final_eol": false,
+      "note": "replace the body of 'fn_001472' with an edited variant (tag 20260215); signature restated for the direct-swap path",
+      "payload": "fn fn_001472(value_a: i32, value_b: i32) -> i32 {\n    let mut acc_fn_001472 = value_a * 1 + 7; // fn_001472 edited step 1\n    acc_fn_001472 += 6; // fn_001472 edited step 2\n    acc_fn_001472 += 9; // fn_001472 edited step 3\n    acc_fn_001472 + 900001\n}\n",
+      "oracle": {
+        "anchor_start_line": null,
+        "anchor_end_line": null,
+        "anchor_last_line": null,
+        "anchor_is_last_line": false,
+        "start_line": 15359,
+        "end_line": 15369,
+        "consumed_end_line": null,
+        "original_span_text": "fn fn_001472(value_a: i32, value_b: i32) -> i32 {\n    let mut acc_fn_001472 = value_a + value_b + 1; // fn_001472 step 1\n    acc_fn_001472 += 2; // fn_001472 step 2\n    acc_fn_001472 += 3; // fn_001472 step 3\n    acc_fn_001472 += 4; // fn_001472 step 4\n    acc_fn_001472 += 5; // fn_001472 step 5\n    acc_fn_001472 += 6; // fn_001472 step 6\n    acc_fn_001472 += 7; // fn_001472 step 7\n    acc_fn_001472 += 8; // fn_001472 step 8\n    acc_fn_001472\n}\n",
+        "sep_before": false,
+        "sep_after": false,
+        "snippet_line_count": 0
+      },
+      "expected": "expected_replace_symbol_body_fn_001472.rs",
+      "inverse": {
+        "kind": "replace",
+        "start_line": 15359,
+        "end_line": 15364,
+        "after_line": 0,
+        "text": "fn fn_001472(value_a: i32, value_b: i32) -> i32 {\n    let mut acc_fn_001472 = value_a + value_b + 1; // fn_001472 step 1\n    acc_fn_001472 += 2; // fn_001472 step 2\n    acc_fn_001472 += 3; // fn_001472 step 3\n    acc_fn_001472 += 4; // fn_001472 step 4\n    acc_fn_001472 += 5; // fn_001472 step 5\n    acc_fn_001472 += 6; // fn_001472 step 6\n    acc_fn_001472 += 7; // fn_001472 step 7\n    acc_fn_001472 += 8; // fn_001472 step 8\n    acc_fn_001472\n}\n"
+      }
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "fn_002167",
+      "language": "rust",
+      "ext": "rs",
+      "eol": "\n",
+      "final_eol": false,
+      "note": "delete 'fn_002167' and the blank lines that separated it from what follows",
+      "payload": null,
+      "oracle": {
+        "anchor_start_line": null,
+        "anchor_end_line": null,
+        "anchor_last_line": null,
+        "anchor_is_last_line": false,
+        "start_line": 22566,
+        "end_line": 22573,
+        "consumed_end_line": 22574,
+        "original_span_text": "fn fn_002167(value_a: i32, value_b: i32) -> i32 {\n    let mut acc_fn_002167 = value_a + value_b + 1; // fn_002167 step 1\n    acc_fn_002167 += 2; // fn_002167 step 2\n    acc_fn_002167 += 3; // fn_002167 step 3\n    acc_fn_002167 += 4; // fn_002167 step 4\n    acc_fn_002167 += 5; // fn_002167 step 5\n    acc_fn_002167\n}\n\n",
+        "sep_before": false,
+        "sep_after": false,
+        "snippet_line_count": 0
+      },
+      "expected": "expected_delete_symbol_fn_002167.rs",
+      "inverse": {
+        "kind": "insert",
+        "start_line": 0,
+        "end_line": 0,
+        "after_line": 22565,
+        "text": "fn fn_002167(value_a: i32, value_b: i32) -> i32 {\n    let mut acc_fn_002167 = value_a + value_b + 1; // fn_002167 step 1\n    acc_fn_002167 += 2; // fn_002167 step 2\n    acc_fn_002167 += 3; // fn_002167 step 3\n    acc_fn_002167 += 4; // fn_002167 step 4\n    acc_fn_002167 += 5; // fn_002167 step 5\n    acc_fn_002167\n}\n\n"
+      }
+    },
+    {
+      "op": "append_at_eof",
+      "symbol": "fn_002838",
+      "language": "rust",
+      "ext": "rs",
+      "eol": "\n",
+      "final_eol": false,
+      "note": "append a fresh rust function at EOF (after the last symbol 'fn_002838')",
+      "payload": "fn fn_ins_20260215_b(value_a: i32, value_b: i32) -> i32 {\n    let mut acc_fn_ins_20260215_b = value_a + value_b + 1; // fn_ins_20260215_b step 1\n    acc_fn_ins_20260215_b += 2; // fn_ins_20260215_b step 2\n    acc_fn_ins_20260215_b += 3; // fn_ins_20260215_b step 3\n    acc_fn_ins_20260215_b += 4; // fn_ins_20260215_b step 4\n    acc_fn_ins_20260215_b\n}\n",
+      "oracle": {
+        "anchor_start_line": 29595,
+        "anchor_end_line": 29601,
+        "anchor_last_line": "}",
+        "anchor_is_last_line": true,
+        "start_line": null,
+        "end_line": null,
+        "consumed_end_line": null,
+        "original_span_text": null,
+        "sep_before": true,
+        "sep_after": false,
+        "snippet_line_count": 7
+      },
+      "expected": "expected_append_at_eof_fn_002838.rs",
+      "inverse": {
+        "kind": "replace",
+        "start_line": 29601,
+        "end_line": 29608,
+        "after_line": 0,
+        "text": "}"
+      }
+    }
+  ]
+}
