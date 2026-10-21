@@ -28,6 +28,15 @@ The exact issue #3 reproduction is a one-line return-value replacement:
 The previous implementation scored this faithful merge ``0.0``, triggered
 two model calls, rejected the chunk, and left the original file
 unchanged. The tests below codify the behaviour the fix must satisfy.
+
+Step 7 (B4, preserve-by-default) narrows that contract: the validator no
+longer ratifies replacement zones, so a merge that DROPS an unmentioned
+original is rejected unless the drop is locally justified — a unique
+shared ``_replacement_key`` identity, or marker-adjacent positional
+adjacency in a marker-bearing segment. The bare merge above (``return x``
+dropped, no marker, no shared key) is therefore a REJECTION today; the
+marker-bearing form of the same edit is the accepted idiom — see
+``test_issue_3_transform_replacement_without_marker_or_key_rejected``.
 """
 
 from __future__ import annotations
@@ -40,7 +49,6 @@ from fastedit.inference.chunked_merge import (
     _real_lines,
 )
 
-
 PASS_THRESHOLD = 0.85
 REJECT_THRESHOLD = 0.5
 
@@ -50,13 +58,27 @@ def _score(original: str, merged: str, snippet: str) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Issue #3 — faithful replacement must be accepted
+# Issue #3 — a transform replacement is accepted only when locally justified
+# (B4 preserve-by-default, Step 7)
 # ---------------------------------------------------------------------------
 
 
-def test_issue_3_faithful_one_line_return_replacement_accepted():
-    """Issue #3 reproduction: a faithful one-line return replacement is
-    accepted by the validator (score >= 0.85). Previously scored 0.0."""
+def test_issue_3_transform_replacement_without_marker_or_key_rejected():
+    """Issue #3 shape under preserve-by-default (B4, Step 7).
+
+    Renamed from ``test_issue_3_faithful_one_line_return_replacement_accepted``,
+    which pinned the pre-B4 replacement-zone contract: any merge realizing
+    the snippet's declared lines was accepted even when it DROPPED the
+    unmentioned originals. Under B4 a snippet declares an edit, it does
+    not license deletion. ``return x`` carries no ``_replacement_key`` and
+    the snippet declares no keep-marker, so dropping it has no local
+    justification and the merge fails closed.
+
+    The same edit IS accepted once the snippet carries a keep-marker: the
+    identity-free original becomes marker-adjacent and the positional
+    fallback justifies the replacement — the marker idiom is the
+    preserve-by-default way to state a one-line transform.
+    """
     original = (
         "def foo():\n"
         "    x = 1\n"
@@ -67,13 +89,30 @@ def test_issue_3_faithful_one_line_return_replacement_accepted():
         "    x = 1\n"
         "    return x + 1\n"
     )
-    # Faithful merge == the snippet for this transform-only edit.
+    # The merge realizes the snippet by dropping the unmentioned
+    # ``return x`` — unjustified without a marker or a shared key (B4).
     merged = snippet
 
     score = _score(original, merged, snippet)
 
-    assert score >= PASS_THRESHOLD, (
-        f"Faithful one-line replacement scored {score:.3f}, "
+    assert score < PASS_THRESHOLD, (
+        f"Unjustified transform replacement scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD} (B4 preserve-by-default)"
+    )
+
+    # Positive control: with a keep-marker the same edit is accepted —
+    # the identity-free original is marker-adjacent and positionally
+    # justified.
+    marked_snippet = (
+        "def foo():\n"
+        "    x = 1\n"
+        "    return x + 1\n"
+        "# ... existing code ...\n"
+    )
+    score_marked = _score(original, merged, marked_snippet)
+
+    assert score_marked >= PASS_THRESHOLD, (
+        f"Marker-justified transform replacement scored {score_marked:.3f}, "
         f"expected >= {PASS_THRESHOLD}"
     )
 
@@ -154,43 +193,74 @@ def test_duplicate_supported_line_rejected_when_not_intended():
 
 def test_repeated_identical_original_lines_handled_by_multiplicity():
     """Repeated identical original lines are processed by multiplicity,
-    not collapsed into a set.  Two scenarios in one test:
+    not collapsed into a set. Updated for B4 preserve-by-default (Step 7).
 
-    (a) Snippet replaces the second ``A`` with ``X``; the merge keeps
-        the first ``A`` and emits ``X`` in the slot of the second.  The
-        expected multiset is ``{A, X, B}``, and the merge matches it
-        exactly.
+    (a)/(b) pinned the pre-B4 replacement-zone contract and are REJECTIONS
+    now (B4): ``A`` is identity-free (no ``_replacement_key``) and the
+    snippet declares no keep-marker, so dropping either copy fails closed
+    — the old replacement-zone rule accepted exactly these merges.
 
-    (b) Snippet replaces *both* ``A``s with a single ``X``; the merge
-        emits ``X, B``.  The expected multiset is ``{X, B}`` (one X, not
-        two), and the merge matches.
+    (c)/(d) an undeclared drop of one copy stays a hallucination whether
+    or not the declared ``X`` landed; without a marker the identity-free
+    deletion fails closed.
 
-    These two together prove the validator is multiplicity-aware and
-    does not collapse duplicates into a set."""
+    (e) multiplicity still decides acceptance when the originals are
+    marker-protected: both copies survive a front insertion — accepted;
+    both copies drop while the single identity-free front new line
+    justifies only one deletion — rejected (a set view would accept it:
+    ``A`` is still "present").
+    """
     original = "A\nA\nB\n"
 
-    # (a) replace-second-A
+    # (a) replace-second-A: identity-free drop, no marker — fail closed.
     snippet_a = "A\nX\nB\n"
     merged_a = "A\nX\nB\n"
     score_a = _score(original, merged_a, snippet_a)
-    assert score_a >= PASS_THRESHOLD, (
-        f"Replace-second-A scored {score_a:.3f}, expected >= {PASS_THRESHOLD}"
+    assert score_a < PASS_THRESHOLD, (
+        f"Replace-second-A scored {score_a:.3f}, expected < {PASS_THRESHOLD} "
+        f"(B4: identity-free drop without a marker fails closed)"
     )
 
-    # (b) replace-both-As with a single X
+    # (b) replace-both-As with a single X: same, no justification.
     snippet_b = "X\nB\n"
     merged_b = "X\nB\n"
     score_b = _score(original, merged_b, snippet_b)
-    assert score_b >= PASS_THRESHOLD, (
-        f"Replace-both-As scored {score_b:.3f}, expected >= {PASS_THRESHOLD}"
+    assert score_b < PASS_THRESHOLD, (
+        f"Replace-both-As scored {score_b:.3f}, expected < {PASS_THRESHOLD} "
+        f"(B4: identity-free drops without a marker fail closed)"
     )
 
-    # And a sanity check: dropping one of the two As without declaring
-    # the replacement is still a hallucination.
+    # (c) dropping one of the two As without declaring the replacement
+    # (X missing too) is still a hallucination.
     merged_c = "A\nB\n"          # drops one A without declaring X
     score_c = _score(original, merged_c, snippet_b)
     assert score_c < PASS_THRESHOLD, (
         f"Undeclared multiplicity loss scored {score_c:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+    # (d) even with the declared X present, the unmentioned second A may
+    # not vanish — no marker, identity-free deletion (B4).
+    merged_d = "A\nX\nB\n"       # X landed, second A silently dropped
+    score_d = _score(original, merged_d, snippet_b)
+    assert score_d < PASS_THRESHOLD, (
+        f"Undeclared single-copy drop scored {score_d:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+    # (e) marker-protected copies: multiplicity, not set membership.
+    marker_snippet = "X\n# ... existing code ...\nB\n"
+    merged_survive = "X\nA\nA\nB\n"   # both copies survive the insertion
+    score_survive = _score(original, merged_survive, marker_snippet)
+    assert score_survive >= PASS_THRESHOLD, (
+        f"Marker-protected copies surviving an insertion scored "
+        f"{score_survive:.3f}, expected >= {PASS_THRESHOLD}"
+    )
+
+    merged_collapse = "X\nB\n"        # both copies drop, capacity for one
+    score_collapse = _score(original, merged_collapse, marker_snippet)
+    assert score_collapse < PASS_THRESHOLD, (
+        f"Multiplicity collapse scored {score_collapse:.3f}, "
         f"expected < {PASS_THRESHOLD}"
     )
 
@@ -697,11 +767,12 @@ _COMPATIBILITY_MATRIX = [
         "def h():\n    a = 1\n    b = 2\n    return a\n",
         "def h():\n    a = 1\n# ... existing code ...\n    return a\n",
     ),
-    (
-        "no-marker-replacement",
-        "def k():\n    x = 1\n    return x\n",
-        "def k():\n    x = 1\n    return x + 1\n",
-    ),
+    # REMOVED row "no-marker-replacement" (preserve-by-default, Step 2):
+    # ``return x + 1`` declared after the last anchor shares its leading
+    # token with the preserved ``return x`` suffix — an ambiguous rewrite
+    # that ``deterministic_edit`` now DECLINES instead of emitting a
+    # duplicate return. A declined edit has no merge for the validator to
+    # score, so the row no longer describes a reachable state.
     (
         "top-insertion",
         "def t():\n    first()\n    second()\n",
@@ -715,8 +786,10 @@ _COMPATIBILITY_MATRIX = [
     (
         "marker-key-replacement",
         "def m(self):\n    self._data = {}\n    self.count = 0\n    return self\n",
-        "def m(self):\n    self._data = OrderedDict()\n"
-        "# ... existing code ...\n    return self\n",
+        (
+            "def m(self):\n    self._data = OrderedDict()\n"
+            "# ... existing code ...\n    return self\n"
+        ),
     ),
 ]
 
@@ -1250,3 +1323,224 @@ def test_generated_side_order_matrix_accept_reject_counts():
     )
     assert accepted_correct == correct_total
     assert rejected_wrong == wrong_total
+
+
+# ---------------------------------------------------------------------------
+# Step 7 — validator aligned with preserve-by-default (B4 + B14).
+# ---------------------------------------------------------------------------
+#
+# The editor (``deterministic_edit``, Steps 2-5) is preserve-by-default:
+# unmentioned original lines survive, declared snippet lines are
+# insertions, and an original may only be dropped when a unique
+# ``(replacement_key, indent)`` identity or marker-adjacent positional
+# adjacency justifies it. The validator used to ratify the OLD destructive
+# semantics instead: a mid segment without a marker was an unprotected
+# replacement zone (``merged_seg == new_all``) and a boundary segment with
+# declared new lines was one too — so a model that CORRECTLY preserved
+# unmentioned gap lines scored 0.0 (silent no-op) while a lossy model
+# scored 1.0. Every segment is now protected.
+
+
+def test_mid_no_marker_preserved_gap_and_inserted_new_scores_clean():
+    """Core preserve-by-default case (B4): a mid segment with NO marker
+    keeps its original gap lines and the declared new line is an
+    insertion. The old validator treated the marker-less gap as an
+    unprotected replacement zone and scored this faithful merge 0.0; it
+    must now score 1.0."""
+    original = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+    snippet = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "    return a\n"
+    )
+    # Faithful merge: the unmentioned gap lines b/c survive and z = 99 is
+    # inserted before the trailing anchor.
+    merged = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    z = 99\n"
+        "    return a\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score >= PASS_THRESHOLD, (
+        f"Preserved mid gap + insertion scored {score:.3f}, "
+        f"expected >= {PASS_THRESHOLD} (preserve-by-default)"
+    )
+
+
+def test_model_deleting_unmentioned_gap_line_rejected():
+    """Same shape as the core case, but the merge drops one unmentioned
+    gap line (``c = 3``). Its replacement key has no declared new-line
+    partner and no marker justifies the deletion, so the lossy merge is
+    rejected."""
+    original = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+        "    return a\n"
+    )
+    snippet = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    z = 99\n"
+        "    return a\n"
+    )
+    merged = (
+        "def foo():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    z = 99\n"
+        "    return a\n"
+    )  # c = 3 dropped without justification
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Unmentioned gap-line deletion scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_boundary_insertion_preserves_originals_scores_clean():
+    """A boundary (post) segment with declared new lines is an INSERTION
+    into the preserved originals, not a wholesale replacement. The old
+    validator flipped the post segment into a replacement zone whenever it
+    carried new lines and scored this faithful merge 0.0."""
+    original = "A\nB\nC\n"
+    snippet = "A\nB\nX\n"      # intent: insert X after B; C unmentioned
+    merged = "A\nB\nX\nC\n"    # X inserted, trailing original C kept
+
+    score = _score(original, merged, snippet)
+
+    assert score >= PASS_THRESHOLD, (
+        f"Boundary insertion preserving originals scored {score:.3f}, "
+        f"expected >= {PASS_THRESHOLD} (preserve-by-default)"
+    )
+
+
+def test_boundary_replacement_deleting_originals_rejected():
+    """The same boundary shape, but the merge drops the unmentioned
+    original ``C``. ``C`` carries no replacement key, the snippet declares
+    no marker, and positional adjacency needs a marker-adjacent side — so
+    the deletion is unjustified and the merge is rejected. The old
+    replacement-zone rule accepted exactly this merge (scored 1.0)."""
+    original = "A\nB\nC\n"
+    snippet = "A\nB\nX\n"
+    merged = "A\nB\nX\n"       # C dropped without justification
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Boundary replacement deleting originals scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD} (preserve-by-default)"
+    )
+
+
+def test_deletion_of_comment_containing_marker_phrase_detected():
+    """B14: a comment that merely CONTAINS a marker phrase (``# ...``) is
+    content, not a marker — the B15 line-anchored rule. It must stay in
+    the validator's original view so a model deleting it is an unjustified
+    deletion (0.0). Under the old substring marker rule the line vanished
+    from the original view and the deletion scored a clean 1.0 via the
+    mid replacement-zone rule."""
+    original = (
+        "def f():\n"
+        "    x = compute(a)  # ... see docs\n"
+        "    return x\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    return x\n"
+    )
+    merged = (
+        "def f():\n"
+        "    return x\n"
+    )  # the comment line was deleted
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Deletion of a comment containing a marker phrase scored "
+        f"{score:.3f}, expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_selective_reindent_of_surviving_lines_rejected():
+    """B14 (indentation faithfulness): surviving originals keep their
+    RELATIVE indentation. Every gap line survives with intact content and
+    multiplicity, but only ``b = 2`` was re-indented (8 → 4 spaces),
+    flattening the ``if cond:`` nesting. Only the indent rule can reject
+    this merge."""
+    original = (
+        "def f():\n"
+        "    a = 1\n"
+        "    if cond:\n"
+        "        b = 2\n"
+        "    c = 3\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    z = 0\n"
+        "    c = 3\n"
+    )
+    merged = (
+        "def f():\n"
+        "    z = 0\n"
+        "    a = 1\n"
+        "    if cond:\n"
+        "    b = 2\n"     # flattened: was indented 8 under `if cond:`
+        "    c = 3\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score < PASS_THRESHOLD, (
+        f"Selective re-indent of surviving lines scored {score:.3f}, "
+        f"expected < {PASS_THRESHOLD}"
+    )
+
+
+def test_uniform_block_shift_accepted():
+    """B14 positive control: a UNIFORM shift of the whole preserved gap is
+    legitimate — models wrap blocks. The relative indent deltas between
+    the surviving gap lines are unchanged (both moved +4), so the merge
+    must be accepted. The old replacement-zone rule scored it 0.0."""
+    original = (
+        "def f():\n"
+        "    a = 1\n"
+        "    b = 2\n"
+        "    c = 3\n"
+    )
+    snippet = (
+        "def f():\n"
+        "    if cond:\n"
+        "    c = 3\n"
+    )
+    # Faithful merge: the preserved gap (a, b) is wrapped into the newly
+    # declared block — a uniform +4 shift of the whole gap.
+    merged = (
+        "def f():\n"
+        "    if cond:\n"
+        "        a = 1\n"
+        "        b = 2\n"
+        "        c = 3\n"
+    )
+
+    score = _score(original, merged, snippet)
+
+    assert score >= PASS_THRESHOLD, (
+        f"Uniform block shift of surviving lines scored {score:.3f}, "
+        f"expected >= {PASS_THRESHOLD}"
+    )

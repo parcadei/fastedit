@@ -1,0 +1,4 @@
+rule cc
+  command = gcc -c $in -o $out
+
+build foo.o: cc foo.c

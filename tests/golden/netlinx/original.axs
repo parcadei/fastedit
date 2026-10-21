@@ -1,0 +1,3 @@
+DEFINE_DEVICE
+
+dvPanel = 128:1:0

@@ -25,6 +25,25 @@ def _no_model(*_args, **_kwargs):
     raise AssertionError("merge_fn must not be called on the field-only path")
 
 
+class _FakeModelResult:
+    """Minimal stand-in for the engine's MergeResult."""
+
+    def __init__(self, merged_code):
+        self.merged_code = merged_code
+        self.tokens_generated = 9
+        self.latency_ms = 1.0
+        self.parse_valid = True
+
+
+def _model_returns_original(code, snippet, language):
+    """Fallback model stand-in: records the call, leaves the code intact."""
+    _model_returns_original.called = True
+    return _FakeModelResult(code)
+
+
+_model_returns_original.called = False
+
+
 # ---------------------------------------------------------------------------
 # Python
 # ---------------------------------------------------------------------------
@@ -105,15 +124,27 @@ public class Cache {
 
 
 def test_java_field_only_does_not_fire_guard(tmp_path):
+    """UPDATED (preserve-by-default, Step 2): the invariant under test — the
+    extras guard must NOT fire for a field-only snippet — is unchanged and
+    still holds. The merge itself now declines on the deterministic path:
+    ``private int size = 100;`` shares only its assignment LHS with the
+    preserved ``private int size = 10;`` (an ambiguous rewrite, item 6), so
+    the edit falls through to the model instead of silently replacing the
+    gap. The methods-half sibling below still asserts the guard fires."""
     file_path = tmp_path / "Cache.java"
     file_path.write_text(JAVA_ORIGINAL)
+    _model_returns_original.called = False
     chunked_merge(
         original_code=JAVA_ORIGINAL,
         snippet=JAVA_FIELD_ONLY_SNIPPET,
         file_path=str(file_path),
-        merge_fn=_no_model,
+        merge_fn=_model_returns_original,
         language="java",
         replace="Cache",
+    )
+    assert _model_returns_original.called, (
+        "field-only rewrite must decline deterministically and reach the "
+        "model without ever raising the extras-guard ValueError"
     )
 
 
@@ -194,16 +225,37 @@ class Cache {
 
 
 def test_typescript_field_only_does_not_fire_guard(tmp_path):
+    """UPDATED (B3): the invariant under test — the extras guard must NOT
+    fire for a field-only snippet — is unchanged and still holds, and the
+    model is never called.
+
+    B3 fixed the direct-swap gate's snippet parser to consult fastedit's
+    own in-memory resolver first (the authoritative map, B26 rationale)
+    instead of the tldr daemon, whose TypeScript extractor reported nothing
+    for this snippet. The parse now sees exactly one top-level definition
+    named ``Cache`` (the grammar does not surface class properties as
+    symbols), so a COMPLETE class re-definition deterministically swaps via
+    the direct-swap path — the same contract the Rust sibling above pins.
+    Nothing is silently deleted: the snippet restates every member of the
+    original class."""
     file_path = tmp_path / "cache.ts"
     file_path.write_text(TS_ORIGINAL)
-    chunked_merge(
+    _model_returns_original.called = False
+    result = chunked_merge(
         original_code=TS_ORIGINAL,
         snippet=TS_FIELD_ONLY_SNIPPET,
         file_path=str(file_path),
-        merge_fn=_no_model,
+        merge_fn=_model_returns_original,
         language="typescript",
         replace="Cache",
     )
+    assert not _model_returns_original.called, (
+        "a complete field-only class re-definition must land on the "
+        "deterministic direct-swap path without raising the extras-guard "
+        "ValueError"
+    )
+    assert result.model_tokens == 0
+    assert result.merged_code == TS_FIELD_ONLY_SNIPPET
 
 
 def test_typescript_methods_fires_guard(tmp_path):

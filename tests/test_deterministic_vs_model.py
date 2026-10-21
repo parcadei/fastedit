@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from fastedit.inference.text_match import deterministic_edit
 from fastedit.inference.ast_utils import get_ast_map
+from fastedit.inference.text_match import deterministic_edit
 
 BENCHMARK_PATH = Path(__file__).parent.parent / "data" / "benchmark.jsonl"
 
@@ -264,11 +264,10 @@ class TestProductionPath:
 
         if tried > 0:
             print(f"\n  Accuracy when tried: {det_pass}/{tried} = {det_pass/tried*100:.1f}%")
-        print(f"  Model accuracy (benchmark): 91.7%")
+        print("  Model accuracy (benchmark): 91.7%")
 
-        print(f"\n--- By edit type ---")
+        print("\n--- By edit type ---")
         for et, counts in sorted(by_edit_type.items()):
-            t = counts["pass"] + counts["fail"] + counts["skip"]
             tried_et = counts["pass"] + counts["fail"]
             acc = f"{counts['pass']/tried_et*100:.0f}%" if tried_et else "n/a"
             print(
@@ -284,11 +283,21 @@ class TestProductionPath:
                     f"symbol={f['symbol']}"
                 )
 
-        print(f"\n--- Summary ---")
+        print("\n--- Summary ---")
         if tried > 0:
             accuracy = det_pass / tried * 100
             print(f"Deterministic: {det_pass}/{tried} = {accuracy:.1f}% when it tries")
-        print(f"Model (benchmark): 143/156 = 91.7%")
+        print("Model (benchmark): 143/156 = 91.7%")
         print(f"Deterministic skips (model needed): {det_skip}/{total}")
         if det_pass > 0:
             print(f"Free edits (0 tokens): {det_pass}/{total} = {det_pass/total*100:.1f}%")
+
+        # Invariant: no benchmark case may end with a result that differs from
+        # the expected output after normalization (AST scope -> deterministic_edit
+        # -> splice). A case the pipeline cannot handle should return None and fall
+        # back to the model. Never yet run against data: the benchmark file is not
+        # in the repo, so this test skips.
+        assert det_fail == 0, (
+            f"{det_fail} case(s) produced a result differing from the expected output "
+            f"after normalization (scope + deterministic_edit + splice) -- see the failures list printed above."
+        )

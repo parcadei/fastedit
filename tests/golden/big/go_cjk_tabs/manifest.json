@@ -1,0 +1,153 @@
+{
+  "schema": "fastedit-corpus-golden/1",
+  "case": "go_cjk_tabs",
+  "language": "go",
+  "ext": "go",
+  "filename": "original.go",
+  "eol": "\n",
+  "final_eol": true,
+  "indent": "\t",
+  "sprinkle_cjk": true,
+  "seed": 20260216,
+  "target_bytes": 1048576,
+  "actual_bytes": 1048380,
+  "symbol_count": 3190,
+  "max_symbol_lines": 133,
+  "oracle": "tests/corpus.py apply_op_oracle — independent line-splice arithmetic on generator-recorded indices; never imports fastedit, never parses code",
+  "regenerate": "uv run python tests/golden/big/_generate.py",
+  "recipe": {
+    "language": "go",
+    "target_bytes": 1048576,
+    "eol": "\n",
+    "final_eol": true,
+    "indent": "\t",
+    "seed": 20260216,
+    "sprinkle_cjk": true
+  },
+  "ops": [
+    {
+      "op": "insert_after_symbol",
+      "symbol": "Fn000894",
+      "language": "go",
+      "ext": "go",
+      "eol": "\n",
+      "final_eol": true,
+      "note": "insert a fresh go function after 'Fn000894'",
+      "payload": "func FnIns20260216A(valueA int, valueB int) int {\n\taccFnIns20260216A := valueA + valueB + 1 // FnIns20260216A step 1\n\taccFnIns20260216A += 2 // FnIns20260216A step 2\n\taccFnIns20260216A += 3 // FnIns20260216A step 3\n\taccFnIns20260216A += 4 // FnIns20260216A step 4\n\treturn accFnIns20260216A\n}\n",
+      "oracle": {
+        "anchor_start_line": 9561,
+        "anchor_end_line": 9566,
+        "anchor_last_line": "}\n",
+        "anchor_is_last_line": false,
+        "start_line": null,
+        "end_line": null,
+        "consumed_end_line": null,
+        "original_span_text": null,
+        "sep_before": true,
+        "sep_after": false,
+        "snippet_line_count": 7
+      },
+      "expected": "expected_insert_after_symbol_Fn000894.go",
+      "inverse": {
+        "kind": "delete",
+        "start_line": 9567,
+        "end_line": 9574,
+        "after_line": 0,
+        "text": ""
+      }
+    },
+    {
+      "op": "replace_symbol_body",
+      "symbol": "Fn001726",
+      "language": "go",
+      "ext": "go",
+      "eol": "\n",
+      "final_eol": true,
+      "note": "replace the body of 'Fn001726' with an edited variant (tag 20260216); signature restated for the direct-swap path",
+      "payload": "func Fn001726(valueA int, valueB int) int {\n\taccFn001726 := valueA*1 + 7 // Fn001726 edited step 1\n\taccFn001726 += 6 // Fn001726 edited step 2\n\taccFn001726 += 9 // Fn001726 edited step 3\n\treturn accFn001726 + 900001\n}\n",
+      "oracle": {
+        "anchor_start_line": null,
+        "anchor_end_line": null,
+        "anchor_last_line": null,
+        "anchor_is_last_line": false,
+        "start_line": 18282,
+        "end_line": 18288,
+        "consumed_end_line": null,
+        "original_span_text": "func Fn001726(valueA int, valueB int) int {\n\taccFn001726 := valueA + valueB + 1 // Fn001726 step 1\n\taccFn001726 += 2 // Fn001726 step 2\n\taccFn001726 += 3 // Fn001726 step 3\n\taccFn001726 += 4 // Fn001726 step 4\n\treturn accFn001726\n}\n",
+        "sep_before": false,
+        "sep_after": false,
+        "snippet_line_count": 0
+      },
+      "expected": "expected_replace_symbol_body_Fn001726.go",
+      "inverse": {
+        "kind": "replace",
+        "start_line": 18282,
+        "end_line": 18287,
+        "after_line": 0,
+        "text": "func Fn001726(valueA int, valueB int) int {\n\taccFn001726 := valueA + valueB + 1 // Fn001726 step 1\n\taccFn001726 += 2 // Fn001726 step 2\n\taccFn001726 += 3 // Fn001726 step 3\n\taccFn001726 += 4 // Fn001726 step 4\n\treturn accFn001726\n}\n"
+      }
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "Fn002537",
+      "language": "go",
+      "ext": "go",
+      "eol": "\n",
+      "final_eol": true,
+      "note": "delete 'Fn002537' and the blank lines that separated it from what follows",
+      "payload": null,
+      "oracle": {
+        "anchor_start_line": null,
+        "anchor_end_line": null,
+        "anchor_last_line": null,
+        "anchor_is_last_line": false,
+        "start_line": 27001,
+        "end_line": 27011,
+        "consumed_end_line": 27012,
+        "original_span_text": "func Fn002537(valueA int, valueB int) int {\n\taccFn002537 := valueA + valueB + 1 // Fn002537 step 1\n\taccFn002537 += 2 // Fn002537 step 2\n\taccFn002537 += 3 // Fn002537 step 3\n\taccFn002537 += 4 // Fn002537 step 4\n\taccFn002537 += 5 // Fn002537 step 5\n\taccFn002537 += 6 // Fn002537 step 6\n\taccFn002537 += 7 // Fn002537 step 7\n\taccFn002537 += 8 // Fn002537 step 8\n\treturn accFn002537\n}\n\n",
+        "sep_before": false,
+        "sep_after": false,
+        "snippet_line_count": 0
+      },
+      "expected": "expected_delete_symbol_Fn002537.go",
+      "inverse": {
+        "kind": "insert",
+        "start_line": 0,
+        "end_line": 0,
+        "after_line": 27000,
+        "text": "func Fn002537(valueA int, valueB int) int {\n\taccFn002537 := valueA + valueB + 1 // Fn002537 step 1\n\taccFn002537 += 2 // Fn002537 step 2\n\taccFn002537 += 3 // Fn002537 step 3\n\taccFn002537 += 4 // Fn002537 step 4\n\taccFn002537 += 5 // Fn002537 step 5\n\taccFn002537 += 6 // Fn002537 step 6\n\taccFn002537 += 7 // Fn002537 step 7\n\taccFn002537 += 8 // Fn002537 step 8\n\treturn accFn002537\n}\n\n"
+      }
+    },
+    {
+      "op": "append_at_eof",
+      "symbol": "Fn003190",
+      "language": "go",
+      "ext": "go",
+      "eol": "\n",
+      "final_eol": true,
+      "note": "append a fresh go function at EOF (after the last symbol 'Fn003190')",
+      "payload": "func FnIns20260216B(valueA int, valueB int) int {\n\taccFnIns20260216B := valueA + valueB + 1 // FnIns20260216B step 1\n\taccFnIns20260216B += 2 // FnIns20260216B step 2\n\taccFnIns20260216B += 3 // FnIns20260216B step 3\n\taccFnIns20260216B += 4 // FnIns20260216B step 4\n\treturn accFnIns20260216B\n}\n",
+      "oracle": {
+        "anchor_start_line": 33907,
+        "anchor_end_line": 33918,
+        "anchor_last_line": "}\n",
+        "anchor_is_last_line": true,
+        "start_line": null,
+        "end_line": null,
+        "consumed_end_line": null,
+        "original_span_text": null,
+        "sep_before": true,
+        "sep_after": false,
+        "snippet_line_count": 7
+      },
+      "expected": "expected_append_at_eof_Fn003190.go",
+      "inverse": {
+        "kind": "delete",
+        "start_line": 33919,
+        "end_line": 33926,
+        "after_line": 0,
+        "text": ""
+      }
+    }
+  ]
+}

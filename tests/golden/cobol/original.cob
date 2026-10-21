@@ -1,0 +1,10 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. HELLO.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           DISPLAY "HELLO".
+           PERFORM SETUP-PARA.
+           STOP RUN.
+       SETUP-PARA.
+           MOVE 1 TO WS-COUNT.
+           DISPLAY "SETUP".

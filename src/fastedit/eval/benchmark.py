@@ -110,7 +110,7 @@ def run_benchmark(
 
         try:
             merge_result = engine.merge(original_code, update_snippet, language)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- deliberate: report-and-continue so one bad example cannot abort the whole benchmark run
             console.print(f"  [red]Error on example {i}: {e}[/red]")
             continue
 

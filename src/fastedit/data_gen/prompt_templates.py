@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 INFERENCE_SYSTEM_PROMPT = (
     "You are a coding assistant that helps merge code updates, "
     "ensuring every modification is fully integrated. /no_think"

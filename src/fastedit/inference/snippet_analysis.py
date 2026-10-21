@@ -13,12 +13,23 @@ import re
 import subprocess
 import tempfile
 
+from ..io_utils import write_all
 from .ast_utils import (
     ASTNode,
     ChunkRegion,
     _get_ast_via_extract,
     _get_ast_via_structure,
 )
+
+# Marker constants live in ONE module (B15 unification). Marker detection
+# goes through ``markers.is_marker_line`` — the shared line-anchored
+# predicate covering the legacy long forms AND the short forms (``#...``,
+# ``//...``, ``…``) — so this module can never disagree with the rest of the
+# pipeline about what a marker is (B17 remainder). ``_MARKER_RE`` itself is
+# kept importable from here purely for backward compatibility
+# (``chunked_merge`` re-exports it; tests/test_snippet_analysis.py imports
+# it from this module); no merge-semantic decision may use it directly.
+from .markers import _MARKER_RE, is_marker_line  # noqa: F401
 
 # --- Language extension mapping for temp file parsing ---
 _LANG_EXT = {
@@ -73,7 +84,10 @@ _IMPORT_CALL_NAMES: dict[str, set[str]] = {
     "lua": {"require"},
 }
 
-_MARKER_RE = re.compile(r'^\s*(?:#|//|/\*)\s*\.\.\..*(?:existing|rest).*\.\.\.')
+# Marker line detection is defined in ``fastedit.inference.markers`` (single
+# source of truth, B15) and imported at the top: ``is_marker_line`` drives
+# every marker decision here; ``_MARKER_RE`` (long forms only) is kept
+# importable for backward compatibility only.
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +109,103 @@ def _extract_snippet_names(snippet: str, language: str | None = None) -> list[st
                 return names
 
     return _regex_extract_names(snippet)
+
+
+def _strip_marker_lines(snippet: str) -> str:
+    """The snippet without its preservation-marker lines (Step D4).
+
+    B15: a marker line is a merge DIRECTIVE, never content — every other
+    consumer in the pipeline excludes it from content decisions, and any
+    new-definition judgment must too (in markdown the canonical
+    ``# ... existing code ...`` marker even parses as a heading, so
+    parsing a snippet with its marker lines still inside fabricates a
+    section nobody declared).
+    """
+    return "".join(
+        line for line in snippet.splitlines(keepends=True)
+        if not is_marker_line(line)
+    )
+
+
+def _snippet_definition_names(
+    snippet: str,
+    language: str,
+) -> list[str] | None:
+    """The snippet's own definition names, in the FILE's symbol vocabulary.
+
+    The file's grammar resolves the snippet (B1) and the SAME declarative
+    B3 format spec that names the file's symbols names the snippet's
+    (:func:`get_ast_map_from_source`) — one vocabulary on both sides of
+    every name comparison, in process, no daemon, no temp file. Marker
+    lines are excluded first (:func:`_strip_marker_lines`).
+
+    Returns ``None`` when the file has NO grammar (the B1 resolver's
+    honest answer): the caller keeps the legacy language-blind regex
+    answer, which is all it ever had.
+    """
+    try:
+        from ..data_gen.ast_analyzer import get_language
+
+        get_language(language)  # the resolver's honest "no grammar" answer raises
+    except Exception:  # noqa: BLE001 -- ANY resolution failure IS the "no grammar" answer
+        return None
+    try:
+        from .ast_utils import get_ast_map_from_source
+
+        nodes = get_ast_map_from_source(
+            _strip_marker_lines(snippet),
+            f"snippet{_LANG_EXT.get(language, '.txt')}",
+            language,
+        )
+    except Exception:  # noqa: BLE001 -- a snippet the grammar cannot parse defines nothing
+        return []
+    return [n.name for n in nodes if n.name]
+
+
+def _snippet_defines_new_symbols(
+    snippet: str,
+    language: str | None,
+    existing_names: set[str],
+) -> bool:
+    """True when the snippet defines a symbol the file does not have —
+    judged in the FILE's own symbol vocabulary (Step D4 defect fix).
+
+    The decision this helper replaces compared two DIFFERENT vocabularies:
+    the snippet's names came from the language-blind definition regex
+    (:func:`_regex_extract_names` — def/fn/func/class shapes in ANY
+    syntax) while ``existing_names`` are the file's own B3 format-spec
+    symbols. For a document format whose symbols are NOT code definitions
+    (a markdown file's symbols are its SECTIONS), a code-shaped line
+    inside a fenced code block fabricated a phantom "new definition" —
+    ``def summarize(users):`` inside a ```python fence became a "new
+    function" ``summarize`` — the edit was routed to a tail "insertion
+    region" that does not contain the edit target, and the model was
+    handed the wrong bytes: the battery rejected every attempt (measured
+    9/9 against the real model) or, for a compliant model echo, would
+    have ratified an insertion into the wrong region.
+
+    The fix is the one-vocabulary rule (CLAUDE.md — declarative, no
+    per-format branches): when the file's grammar resolves, the snippet's
+    definitions are read with the file's own format spec
+    (:func:`_snippet_definition_names`); only grammar-less files keep the
+    legacy regex answer (nothing better exists there, and the AST-less
+    branch never reaches the insertion decision anyway).
+
+    Accepted asymmetry, documented: a document-format snippet that
+    genuinely adds a new section/element may now still fall through to
+    the conservative whole-file region, because the legacy temp-file
+    parser behind :func:`_find_insertion_region` only knows code
+    definitions. Missing a tight chunk is safe; inventing a wrong-region
+    one was not.
+    """
+    if language:
+        names = _snippet_definition_names(snippet, language)
+        if names is not None:
+            return any(name not in existing_names for name in names)
+    return any(
+        name not in existing_names for name in _regex_extract_names(snippet)
+    )
+
 
 def _top_level_extras(
     snippet: str, language: str | None, target: str
@@ -123,11 +234,11 @@ def _top_level_extras(
         tmp_path = None
         try:
             fd, tmp_path = tempfile.mkstemp(suffix=ext)
-            os.write(fd, snippet.encode())
+            write_all(fd, snippet.encode())
             os.close(fd)
             result = subprocess.run(
                 ["tldr", "structure", tmp_path, "--format", "compact"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=5, check=False,
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
@@ -149,7 +260,7 @@ def _top_level_extras(
     try:
         from ..data_gen.ast_analyzer import analyze_file
         fs = analyze_file(snippet, language)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- deliberate: tree-sitter parse of arbitrary snippet input degrades to the regex extractor on any failure
         return [n for n in _extract_snippet_names(snippet, language) if n != target]
     extras: list[str] = []
     for fn in fs.functions:
@@ -161,17 +272,101 @@ def _top_level_extras(
     return extras
 
 
+def _member_snippet_parse_names(snippet: str, file_name: str) -> list[str]:
+    """The definition names ``snippet`` defines when read as a MEMBER.
+
+    Issue #5: a member snippet (a class constructor, a method shorthand) is
+    only grammatical INSIDE its container — the compilation-unit parse the
+    bare helper runs sees an error node where the definition should be.
+    Wrapping it in the language's minimal container (declared in
+    ``_MEMBER_SNIPPET_CONTAINERS``) asks the grammar the question the
+    snippet actually answers. Returns [] for languages without a declared
+    container and for snippets that do not parse as a member either — the
+    synthetic container itself is never reported.
+    """
+    try:
+        from ..data_gen.ast_analyzer import detect_language
+        from .ast_utils import (
+            _MEMBER_SNIPPET_CONTAINER_NAME,
+            _MEMBER_SNIPPET_CONTAINERS,
+            get_ast_map_from_source,
+        )
+        language = detect_language(file_name)
+        container = _MEMBER_SNIPPET_CONTAINERS.get(language or "")
+        if container is None:
+            return []
+        prefix, suffix = container
+        nodes = get_ast_map_from_source(prefix + snippet + suffix, file_name)
+    except Exception:  # noqa: BLE001 -- arbitrary snippet text degrades to "defines nothing"
+        return []
+    return [
+        n.name for n in nodes
+        if n.name and n.name != _MEMBER_SNIPPET_CONTAINER_NAME
+    ]
+
+
+def _snippet_parses_as_member(snippet: str, language: str) -> bool:
+    """True when ``snippet`` parses as a member definition of ``language``.
+
+    Issue #5: the standalone validate-parse gate asks a member snippet the
+    wrong question — ``constructor(...) {...}`` is ungrammatical at
+    compilation-unit level BY DESIGN. Re-asking inside the language's
+    minimal container accepts exactly the well-formed member replacements.
+    """
+    from ..data_gen.ast_analyzer import validate_parse
+    from .ast_utils import _MEMBER_SNIPPET_CONTAINERS
+
+    container = _MEMBER_SNIPPET_CONTAINERS.get(language)
+    if container is None:
+        return False
+    prefix, suffix = container
+    try:
+        return validate_parse(prefix + snippet + suffix, language)
+    except Exception:  # noqa: BLE001 -- a wedged/unknown grammar cannot validate the snippet
+        return False
+
+
 def _try_tldr_snippet_parse(snippet: str, ext: str) -> list[str]:
-    """Try to parse a snippet with tldr structure via a temp file."""
+    """Return the definition names a parser sees in ``snippet``.
+
+    B3: the primary parser is fastedit's own in-memory tree-sitter
+    resolver (:func:`get_ast_map_from_source`) — the same authoritative
+    source every AST map in the pipeline uses (B26 rationale: no daemon,
+    no salsa-cache staleness, no temp file), and the only one that knows
+    the data formats (html/xml/json/yaml/css/toml/sql/dockerfile/...)
+    whose symbols B3 wired. The ``tldr structure`` daemon stays as a
+    fallback for the historical surface in case an in-memory map comes
+    back empty for a language the daemon knows.
+
+    Issue #5: when neither the bare in-memory parse nor the daemon sees a
+    definition, the snippet is re-read as a MEMBER of its language's
+    minimal container (:func:`_member_snippet_parse_names`) — a
+    ``constructor(...) {...}`` replacement defines ``constructor``, it is
+    not "defines nothing".
+    """
+    names: list[str] = []
+    try:
+        from .ast_utils import get_ast_map_from_source
+        nodes = get_ast_map_from_source(snippet, f"snippet{ext}")
+        names = [n.name for n in nodes if n.name]
+    except Exception:  # noqa: BLE001 -- deliberate: parsing arbitrary snippet text must degrade to the next resolver, never raise
+        names = []
+    if names:
+        return names
+
+    member_names = _member_snippet_parse_names(snippet, f"snippet{ext}")
+    if member_names:
+        return member_names
+
     tmp_path = None
     try:
         fd, tmp_path = tempfile.mkstemp(suffix=ext)
-        os.write(fd, snippet.encode())
+        write_all(fd, snippet.encode())
         os.close(fd)
 
         result = subprocess.run(
             ["tldr", "structure", tmp_path, "--format", "compact"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True, text=True, timeout=5, check=False,
         )
         if result.returncode != 0:
             return []
@@ -212,7 +407,7 @@ def _get_snippet_definitions(snippet: str, language: str | None) -> list[ASTNode
     tmp_path = None
     try:
         fd, tmp_path = tempfile.mkstemp(suffix=ext)
-        os.write(fd, snippet.encode())
+        write_all(fd, snippet.encode())
         os.close(fd)
         nodes = _get_ast_via_structure(tmp_path)
         if not nodes:
@@ -247,7 +442,7 @@ def _get_import_line_set(source: str, language: str) -> set[int]:
     try:
         from ..data_gen.ast_analyzer import parse_code
         tree = parse_code(source, language)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- deliberate: parse of arbitrary source (unknown language/malformed) yields no import lines, never propagates
         return set()
 
     call_names = _IMPORT_CALL_NAMES.get(language)
@@ -356,9 +551,15 @@ def _find_import_region(
     if not import_lines:
         return None
 
-    # Restrict to lines before the first AST definition
-    if ast_nodes:
-        first_def = min(n.line_start for n in ast_nodes)
+    # Restrict to lines before the first AST definition. The `imports`
+    # pseudo-symbol (issue #5) IS the import block, not a definition —
+    # counting it as the first definition would push the boundary above
+    # the imports and filter the whole region away.
+    definition_starts = [
+        n.line_start for n in ast_nodes if n.kind != "imports"
+    ]
+    if definition_starts:
+        first_def = min(definition_starts)
         import_lines = {ln for ln in import_lines if ln < first_def}
 
     if not import_lines:
@@ -376,7 +577,7 @@ def _extract_identifiers(source: str, language: str) -> set[str]:
     try:
         from ..data_gen.ast_analyzer import parse_code
         tree = parse_code(source, language)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- deliberate: parse of arbitrary source (unknown language/malformed) yields no identifiers, never propagates
         return set()
 
     identifiers: set[str] = set()
@@ -462,6 +663,86 @@ def _find_matching_nodes(
     return []
 
 
+def _region_bracketing_anchor(
+    anchor: int,
+    ast_nodes: list[ASTNode],
+    total_lines: int,
+) -> tuple[int, int] | None:
+    """Span the AST nodes bracketing ``anchor`` (1-indexed file line).
+
+    Exact port of the pre-B28 bracketing: the closest node ending at-or-
+    before the anchor (+2 slack) opens the region; the closest node
+    starting at-or-after it closes it. Returns ``None`` only when no nodes
+    exist on either side.
+    """
+    before_node = None
+    after_node = None
+    for node in ast_nodes:
+        if node.line_end <= anchor + 2 and (
+            before_node is None or node.line_end > before_node.line_end
+        ):
+            before_node = node
+        if node.line_start >= anchor and (
+            after_node is None or node.line_start < after_node.line_start
+        ):
+            after_node = node
+
+    if before_node and after_node:
+        return (before_node.line_start, after_node.line_end)
+    if before_node:
+        return (
+            before_node.line_start,
+            min(total_lines, before_node.line_end + 30),
+        )
+    if after_node:
+        return (max(1, after_node.line_start - 30), after_node.line_end)
+    return None
+
+
+def _consistent_insertion_region(
+    context_occurrences: list[tuple[str, list[int]]],
+    ast_nodes: list[ASTNode],
+    total_lines: int,
+) -> tuple[int, int] | None:
+    """Bracket one insertion region that ALL context lines agree on (B28).
+
+    The anchor is the RAREST context line — least frequent normalized
+    content across the original, ties broken by the longer (more
+    specific) line. Pre-fix every context line matched its FIRST
+    occurrence and ``max()`` picked the anchor, so one common line steered
+    the insertion anywhere. Every candidate anchor occurrence brackets a
+    region; the region wins only when it contains at least one occurrence
+    of EVERY context line, and only when exactly one distinct region does.
+    ``None`` means conflicting (or ambiguous) context — the caller must
+    fall back rather than guess a neighborhood.
+    """
+    if not ast_nodes:
+        return None
+
+    anchor_positions = min(
+        context_occurrences,
+        key=lambda item: (len(item[1]), -len(item[0])),
+    )[1]
+
+    regions: list[tuple[int, int]] = []
+    for anchor in anchor_positions:
+        region = _region_bracketing_anchor(anchor, ast_nodes, total_lines)
+        if region is None:
+            continue
+        start, end = region
+        consistent = all(
+            any(start <= pos <= end for pos in positions)
+            for _line, positions in context_occurrences
+        )
+        if consistent and region not in regions:
+            regions.append(region)
+
+    if len(regions) == 1:
+        return regions[0]
+    # No consistent region, or several distinct ones: a guess either way.
+    return None
+
+
 def _find_insertion_region(
     snippet: str,
     original_lines: list[str],
@@ -477,6 +758,13 @@ def _find_insertion_region(
     2. Identifying context lines (snippet lines outside new definitions)
     3. Matching context lines against the file to find the insertion neighborhood
     4. Creating a chunk spanning the neighboring AST nodes
+
+    B28 (Step 17): the anchor is the RAREST context line and the bracketed
+    region must contain at least one occurrence of EVERY context line;
+    conflicting context returns ``None`` so the caller's fallback runs
+    (for :func:`locate_chunks` that is the conservative whole-file
+    region). Context lines that match nothing in the original still
+    cannot vote — unchanged.
     """
     # Use tldr to parse both snippet and file
     snippet_defs = _get_snippet_definitions(snippet, language)
@@ -492,53 +780,38 @@ def _find_insertion_region(
         for ln in range(d.line_start, d.line_end + 1):
             new_def_lines.add(ln)
 
-    # Context lines: snippet lines NOT in new definitions, not blank, not markers
+    # Context lines: snippet lines NOT in new definitions, not blank, not
+    # markers. B28: collect ALL original occurrences per context line
+    # (1-indexed) — both the rarity ranking and the consistency check need
+    # the full picture, not the first match.
     snippet_lines = snippet.splitlines()
-    context_file_lines: list[int] = []  # 1-indexed in original file
+    context_occurrences: list[tuple[str, list[int]]] = []
 
     for si, sline in enumerate(snippet_lines, 1):
         if si in new_def_lines:
             continue
         stripped = sline.strip()
-        if not stripped or _MARKER_RE.match(sline):
+        if not stripped or is_marker_line(sline):
             continue
-        # Find this line in the original file
-        for fi, fline in enumerate(original_lines):
-            if fline.strip() == stripped:
-                context_file_lines.append(fi + 1)
-                break
+        positions = [
+            fi + 1 for fi, fline in enumerate(original_lines)
+            if fline.strip() == stripped
+        ]
+        if positions:
+            context_occurrences.append((stripped, positions))
 
-    if context_file_lines:
-        # Use the latest context line as anchor for insertion point
-        anchor = max(context_file_lines)
-
-        # Find AST nodes that bracket the anchor
-        before_node = None
-        after_node = None
-        for node in ast_nodes:
-            if node.line_end <= anchor + 2 and (before_node is None or node.line_end > before_node.line_end):
-                before_node = node
-            if node.line_start >= anchor and (after_node is None or node.line_start < after_node.line_start):
-                after_node = node
-
-        # Chunk spans from before_node through after_node
-        if before_node and after_node:
+    if context_occurrences and ast_nodes:
+        region = _consistent_insertion_region(
+            context_occurrences, ast_nodes, total_lines,
+        )
+        if region is not None:
             return ChunkRegion(
-                before_node.line_start, after_node.line_end,
-                [d.name for d in new_defs],
+                region[0], region[1], [d.name for d in new_defs],
             )
-        elif before_node:
-            end = min(total_lines, before_node.line_end + 30)
-            return ChunkRegion(
-                before_node.line_start, end,
-                [d.name for d in new_defs],
-            )
-        elif after_node:
-            start = max(1, after_node.line_start - 30)
-            return ChunkRegion(
-                start, after_node.line_end,
-                [d.name for d in new_defs],
-            )
+        # B28: context existed but cannot agree on one region — return no
+        # region so the caller's fallback runs, instead of letting a
+        # common line's first occurrence steer the insertion.
+        return None
 
     # No context matched — default to tail of file
     if len(ast_nodes) >= 2:

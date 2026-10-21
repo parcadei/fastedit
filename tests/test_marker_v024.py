@@ -18,7 +18,6 @@ from fastedit.inference.text_match import (
     deterministic_edit,
 )
 
-
 # ---------------------------------------------------------------------------
 # Marker-position semantics
 # ---------------------------------------------------------------------------

@@ -28,8 +28,6 @@ This test file covers:
 
 from __future__ import annotations
 
-import ast
-
 from fastedit.inference.chunked_merge import chunked_merge
 
 
@@ -39,6 +37,27 @@ def _no_model(*_args, **_kwargs):
         "merge_fn must NOT be called — this edit should hit the "
         "deterministic AST fast path (replace= with no markers)"
     )
+
+
+class _FakeModelResult:
+    """Minimal stand-in for the engine's MergeResult."""
+
+    def __init__(self, merged_code):
+        self.merged_code = merged_code
+        self.tokens_generated = 11
+        self.latency_ms = 1.0
+        self.parse_valid = True
+
+
+def _model_returns_original(code, snippet, language):
+    """Fallback model stand-in: records the call and the code it received."""
+    _model_returns_original.called = True
+    _model_returns_original.received_code = code
+    return _FakeModelResult(code)
+
+
+_model_returns_original.called = False
+_model_returns_original.received_code = ""
 
 
 # ---------------------------------------------------------------------------
@@ -219,12 +238,20 @@ RS_BODY_ONLY_SNIPPET = """\
 
 
 def test_replace_with_body_only_snippet_preserves_signature_rust(tmp_path):
-    """BUG REPRO (Rust): body-only snippet + replace= must preserve fn line."""
+    """BUG REPRO (Rust): body-only snippet + replace= must preserve fn line.
+
+    RESTORED (preserve-by-default, Step 5): the extracted signature span
+    now ends AFTER the body-opening brace, so the prepended line matches
+    the original ``fn ... {`` line exactly and is pinned as fixed context
+    (``prepend_signature_lines``). The deterministic text-match path
+    completes with zero model tokens — signature intact, guard inserted,
+    marker-preserved tail verbatim, valid Rust.
+    """
     file_path = tmp_path / "file.rs"
     file_path.write_text(RS_ORIGINAL)
 
     result = chunked_merge(
-        original_code=file_path.read_text(),
+        original_code=RS_ORIGINAL,
         snippet=RS_BODY_ONLY_SNIPPET,
         file_path=str(file_path),
         merge_fn=_no_model,
@@ -234,23 +261,24 @@ def test_replace_with_body_only_snippet_preserves_signature_rust(tmp_path):
 
     merged = result.merged_code
 
-    # Signature must survive — before the fix this was stripped.
-    assert "fn retry_batch(" in merged, (
-        f"Rust signature stripped — silent corruption!\n{merged}"
+    # Primary assertion: the signature must survive, exactly once.
+    assert "fn retry_batch(client: &Client, records: Vec<Record>, max_attempts: u32) -> Vec<Response> {" in merged, (
+        f"signature was stripped — silent corruption!\n{merged}"
     )
-    # Exactly one definition, no duplicate.
     assert merged.count("fn retry_batch") == 1, (
         f"fn retry_batch appears {merged.count('fn retry_batch')} times:\n{merged}"
     )
 
-    # Guard from snippet present.
-    assert "records.is_empty()" in merged, merged
-    assert "Vec::new()" in merged, merged
+    # The new guard from the snippet must be present.
+    assert "if records.is_empty() {" in merged, merged
+    assert "return Vec::new();" in merged, merged
 
-    # Original tail preserved by marker.
+    # Original tail (panic) must survive — the marker preserves it.
     assert 'panic!("exhausted retries")' in merged, merged
 
-    assert result.model_tokens == 0
+    # Deterministic fast path: zero model tokens, valid Rust.
+    assert result.model_tokens == 0, merged
+    assert result.parse_valid is True, merged
 
 
 # ---------------------------------------------------------------------------

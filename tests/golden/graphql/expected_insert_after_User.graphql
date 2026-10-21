@@ -1,0 +1,13 @@
+type User {
+  id: ID!
+  name: String
+}
+
+type Comment {
+  id: ID!
+}
+
+type Post {
+  id: ID!
+  author: User
+}

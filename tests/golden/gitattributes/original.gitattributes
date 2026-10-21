@@ -1,0 +1,3 @@
+*.py text eol=lf
+*.png binary
+*.md text diff

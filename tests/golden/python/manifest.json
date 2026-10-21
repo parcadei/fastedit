@@ -1,0 +1,64 @@
+{
+  "language": "python",
+  "ext": "py",
+  "filename": "original.py",
+  "symbol_semantics": "top-level functions, classes, methods (parent-qualified) — module-level UPPER_CASE assignments are deliberately not symbols (see the _CONST_LIKE_NODE_TYPES note in ast_utils)",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "alpha",
+      "snippet": "def gamma(z):\n    return z - 1\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 5,
+        "anchor_end_line": 6
+      },
+      "expected": "expected_insert_after_alpha.py"
+    },
+    {
+      "op": "replace_symbol",
+      "symbol": "beta",
+      "snippet": "def beta(y):\n    return y * 3\n",
+      "path": "direct_swap",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 14,
+        "end_line": 15
+      },
+      "expected": "expected_replace_symbol_beta.py"
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "alpha",
+      "snippet": null,
+      "path": null,
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 5,
+        "end_line": 6
+      },
+      "expected": "expected_delete_symbol_alpha.py"
+    }
+  ],
+  "gigo": {
+    "original": "original_gigo.py",
+    "defect": "syntax error in an unrelated function (def broken(:) — EDIT-NOT-CORRECT: preserved byte-exact",
+    "defect_lines": [
+      4,
+      5
+    ],
+    "op": {
+      "op": "insert_after",
+      "symbol": "beta",
+      "snippet": "def gamma(z):\n    return z - 1\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 12,
+        "anchor_end_line": 13
+      },
+      "expected": "expected_gigo_beta.py"
+    }
+  }
+}

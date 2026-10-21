@@ -1,0 +1,3 @@
+project('sample', 'c')
+
+executable('app', 'main.c')

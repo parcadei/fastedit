@@ -11,7 +11,6 @@ import pytest
 
 from fastedit.inference.chunked_merge import chunked_merge
 
-
 TS_SOURCE = """\
 const DAY_MS = 86400000
 

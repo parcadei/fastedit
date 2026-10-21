@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<config>
+  <server>host1</server>
+  <cache enabled="false">memcached</cache>
+  <limits>
+    <timeout>30</timeout>
+  </limits>
+</config>

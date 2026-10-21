@@ -50,7 +50,6 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..data_gen.ast_analyzer import EXTENSION_TO_LANGUAGE, detect_language
 from .ast_utils import (
     _qualified_symbol_names,
     _resolve_symbol,
@@ -352,7 +351,6 @@ def _scan_file_named_imports(
         return []
 
     stem = from_file.stem
-    basename = from_file.name
     # Match any import line that contains the stem or basename as a
     # quoted / bracketed substring. The per-family regex below is
     # intentionally loose — we're already filtering by ``_is_import_
@@ -864,7 +862,7 @@ def _rewrite_dotted_import_line(
     # package is already in scope. Flag for manual review since the
     # semantics are: after the move, the symbol lives elsewhere and the
     # wildcard won't cover it.
-    if path.endswith(path_sep + "*") or path.endswith(".*"):
+    if path.endswith((path_sep + "*", ".*")):
         return None, False, "wildcard import"
 
     # Split on the path separator to find the symbol suffix.
@@ -1053,7 +1051,7 @@ def _rewrite_rust_import_line(
             True,
             (
                 "wildcard import may now be unused \u2014 consider "
-                f"removing ``use {path};`` if ``{path[:-3] if path.endswith('::*') else path}::*`` "
+                f"removing ``use {path};`` if ``{path.removesuffix('::*')}::*`` "
                 f"was only used for ``{symbol}``"
             ),
         )
@@ -1172,7 +1170,7 @@ def _rewrite_rust_braced_use(
     try:
         lang = Language(tree_sitter_rust.language())
         parser = Parser(lang)
-    except Exception:
+    except Exception:  # noqa: BLE001 -- deliberate: any tree-sitter version/API hiccup means "unavailable", caller falls back to the regex path
         return None
 
     # Parse just the single stripped line so byte offsets are local.
@@ -1697,18 +1695,24 @@ def _rewrite_line_for_family(
 def _extract_span(
     file_path: str, symbol: str,
 ) -> tuple[list[str], tuple[int, int], list[str]]:
-    """Extract ``symbol``'s full AST span from ``file_path``.
+    """Extract symbol's full AST span from file_path.
 
-    Returns ``(remaining_lines, span, extracted_lines)``:
-        remaining_lines — the source lines with the symbol removed
-        span            — (start, end) 1-indexed inclusive (pre-removal)
-        extracted_lines — the lines representing the symbol (incl. one
+    Returns (remaining_lines, span, extracted_lines):
+        remaining_lines -- the source lines with the symbol removed
+        span            -- (start, end) 1-indexed inclusive (pre-removal)
+        extracted_lines -- the lines representing the symbol (incl. one
                           trailing blank separator when present)
 
-    Raises ``ValueError`` if the symbol isn't found.
+    Raises ValueError if the symbol is not found.
     """
     path = Path(file_path)
-    original = path.read_text(encoding="utf-8", errors="replace")
+    original = path.read_bytes().decode("utf-8", errors="replace")
+    # A UTF-8 BOM is a file-level marker, not part of line 1's content --
+    # strip it here so it can never ride along inside `extracted` if the
+    # moved symbol happens to be the file's first one. The source file's
+    # own write-back (via _atomic_write on `remaining`) restores its BOM
+    # unconditionally, independent of which symbol was removed.
+    original = original.removeprefix("﻿")
     lines = original.splitlines(keepends=True)
     total = len(lines)
 
@@ -1725,7 +1729,7 @@ def _extract_span(
     end_idx = target.line_end           # exclusive
 
     # Include a single trailing blank line as separator (mirrors
-    # ``move_symbol``'s behaviour).
+    # move_symbol's behaviour).
     if end_idx < total and lines[end_idx].strip() == "":
         end_idx += 1
 
@@ -1738,35 +1742,42 @@ def _extract_span(
 def _insert_into_destination(
     to_path: Path, extracted: list[str], after: str | None,
 ) -> tuple[str, int]:
-    """Return the new content of ``to_path`` and the insertion line.
+    """Return the new content of to_path and the insertion line.
 
-    When ``after`` is None we append to end-of-file. When it's a name we
+    When after is None we append to end-of-file. When it's a name we
     locate the matching AST node and insert just after its last line.
-    Raises ``ValueError`` when ``after`` is given but not found.
+    Raises ValueError when after is given but not found.
     """
-    dst_text = to_path.read_text(encoding="utf-8", errors="replace")
+    from ..split_join import detect_line_ending, normalize_line_endings
+
+    dst_text = to_path.read_bytes().decode("utf-8", errors="replace")
     dst_lines = dst_text.splitlines(keepends=True)
     total = len(dst_lines)
 
+    # The moved block carries its SOURCE file's line endings; normalize it
+    # to the DESTINATION's prevailing convention so the insertion point
+    # does not become a mixed-ending seam. Untouched destination lines
+    # (prefix/suffix) are never touched here.
+    line_ending = detect_line_ending(dst_text)
+    extracted = normalize_line_endings("".join(extracted), line_ending).splitlines(keepends=True)
+
     if after is None:
-        # Append at EOF. Ensure a blank separator if the file doesn't
-        # end with a newline or blank.
         prefix = dst_lines
-        if prefix and not prefix[-1].endswith("\n"):
+        if prefix and not prefix[-1].endswith(("\n", "\r")):
             prefix = list(prefix)
-            prefix[-1] = prefix[-1] + "\n"
+            prefix[-1] = prefix[-1] + line_ending
         # Separator blank line between existing content and the
         # extracted symbol (only if there's existing content and the
         # last line isn't already blank).
         if prefix and prefix[-1].strip() != "":
-            prefix = list(prefix) + ["\n"]
+            prefix = list(prefix) + [line_ending]
         merged = prefix + list(extracted)
         # Ensure final newline.
-        if merged and not merged[-1].endswith("\n"):
-            merged[-1] = merged[-1] + "\n"
+        if merged and not merged[-1].endswith(("\n", "\r")):
+            merged[-1] = merged[-1] + line_ending
         return "".join(merged), len(prefix)
 
-    # after is named — resolve via the destination's AST.
+    # after is named -- resolve via the destination's AST.
     ast_nodes = get_ast_map(str(to_path), total)
     anchor = _resolve_symbol(after, ast_nodes)
     if anchor is None:
@@ -1783,17 +1794,17 @@ def _insert_into_destination(
     # Separator blank line before the extracted symbol if the anchor
     # didn't end with one.
     if prefix and prefix[-1].strip() != "":
-        prefix.append("\n")
+        prefix.append(line_ending)
 
     injected = list(extracted)
     # Ensure a trailing blank between the extracted span and the
     # following content.
     if suffix and injected and injected[-1].strip() != "":
-        injected.append("\n")
+        injected.append(line_ending)
 
     merged = prefix + injected + suffix
-    if merged and not merged[-1].endswith("\n"):
-        merged[-1] = merged[-1] + "\n"
+    if merged and not merged[-1].endswith(("\n", "\r")):
+        merged[-1] = merged[-1] + line_ending
     return "".join(merged), len(prefix)
 
 
@@ -1854,8 +1865,6 @@ def move_to_file(
             f"{from_ext} -> {to_ext}"
         )
     family = from_family or ""
-
-    language = detect_language(from_path)
 
     # --- Conflict check: symbol already defined in destination -----------
     dst_lines_total = len(

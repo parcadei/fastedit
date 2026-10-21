@@ -7,6 +7,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from ..io_utils import UnsupportedEncodingError, read_source
 from .server import mcp
 
 
@@ -37,7 +38,7 @@ def fast_read(file_path: str) -> str:
     try:
         result = subprocess.run(
             ["tldr", "structure", file_path, "--format", "compact"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True, text=True, timeout=10, check=False,
         )
         if result.returncode != 0:
             return f"Error: tldr structure failed for {file_path}: {result.stderr.strip()}"
@@ -124,7 +125,7 @@ def fast_search(
         try:
             result = subprocess.run(
                 ["tldr", "references", query, path, "--format", "text", "--limit", str(top_k)],
-                capture_output=True, text=True, timeout=15,
+                capture_output=True, text=True, timeout=15, check=False,
             )
             if result.returncode != 0:
                 return f"Error: tldr references failed: {result.stderr.strip()}"
@@ -141,7 +142,7 @@ def fast_search(
         cmd.extend(["--hybrid", regex_filter])
     try:
         result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=15,
+            cmd, capture_output=True, text=True, timeout=15, check=False,
         )
         if result.returncode != 0:
             return f"Error: tldr search failed: {result.stderr.strip()}"
@@ -171,7 +172,7 @@ def _compact_search(text: str) -> str:
             else:
                 continue
         stripped = line.strip()
-        if stripped.startswith("Called by:") or stripped.startswith("Calls:"):
+        if stripped.startswith(("Called by:", "Calls:")):
             continue
         out.append(line)
     return "\n".join(out).strip()
@@ -181,23 +182,61 @@ def _compact_search(text: str) -> str:
     description=(
         "Show a unified diff of changes made by the last fast_edit or "
         "fast_batch_edit call on this file. Returns a compact diff — much "
-        "cheaper than re-reading the whole file to verify an edit."
+        "cheaper than re-reading the whole file to verify an edit. "
+        "base='last' (default) diffs against the NEWEST pre-edit snapshot, "
+        "i.e. exactly the last edit's change; base='all' diffs against the "
+        "OLDEST backup — every change still in the undo history, for loss "
+        "detection across multiple edits."
     ),
 )
-def fast_diff(file_path: str) -> str:
-    """Show the diff between the pre-edit snapshot and current file."""
+def fast_diff(file_path: str, base: str = "last") -> str:
+    """Show the diff between a pre-edit snapshot and the current file.
+
+    base='last' (default) = the NEWEST backup (the last edit's change);
+    base='all' = the OLDEST backup (every change still in the undo
+    history) — the CLI's `fastedit diff --base` semantics, so both
+    surfaces agree (issue #15).
+    """
+    if base not in ("last", "all"):
+        return f"Error: base must be 'last' or 'all', got: {base!r}"
     ctx = mcp.get_context()
     snapshots: dict = ctx.request_context.lifespan_context["snapshots"]
+    backups = ctx.request_context.lifespan_context["backups"]
 
     path = Path(file_path)
     if not path.exists():
         return f"Error: file not found: {file_path}"
 
-    if file_path not in snapshots:
+    # base='last' prefers the MCP session's in-memory snapshot (the last
+    # fast_edit call THIS server made, even before any backup existed);
+    # it falls back to the NEWEST on-disk backup so the surface matches
+    # the CLI's default after external or previous-session edits.
+    # base='all' always reads the OLDEST on-disk backup — the pre-state of
+    # the whole still-undoable change set (issue #8's loss-detection view).
+    original_bytes: bytes | None = None
+    if base == "last" and file_path in snapshots:
+        original_text = snapshots[file_path]
+        original_bytes = original_text.encode("utf-8")
+    elif file_path in backups:
+        try:
+            original_bytes = (
+                backups.oldest(file_path) if base == "all"
+                else backups.peek(file_path)
+            )
+        except KeyError:
+            original_bytes = None
+    if original_bytes is None:
         return f"No prior edit recorded for {file_path}. Call fast_edit first."
 
-    original = snapshots[file_path]
-    current = path.read_text(encoding="utf-8", errors="replace")
+    # Display decode mirrors _decode_for_display: the snapshot/backup bytes
+    # are decoded with the codec the current file reads as (or UTF-8 with
+    # replacement), so the diff compares like-for-like text and the bytes
+    # are never rewritten.
+    try:
+        current, display_encoding = read_source(path)
+    except UnsupportedEncodingError as e:
+        return f"Error: {e}"
+    original = original_bytes.decode(display_encoding or "utf-8", errors="replace")
 
     if original == current:
         return f"No changes detected in {file_path}."

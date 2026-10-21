@@ -1,0 +1,5 @@
+name: fastedit
+version: 0.5.0
+database:
+  host: localhost
+  port: 5432

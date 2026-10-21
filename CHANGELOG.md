@@ -2,6 +2,28 @@
 
 All notable changes to FastEdit are documented in this file. Format: [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Added
+- **Hermetic literal line primitives (#14, #17, #18, #22):** `--insert-after`/`--insert-before LITERAL` (unique full-line match), `--replace-literal` (`#N` suffix / `--occurrence N` for repeats), and `--lines FROM:TO --delete` / `--snippet` (line-range delete/replace). 0 tokens, no model, full backup/EOL/stat/lock machinery. Indent-inheritance anchors a column-0 snippet to the anchor line's indentation.
+- **Global resource governor (#12 exit-137 root cause):** cross-process `flock` slots under `~/.fastedit/limits` cap loaded merge engines (`max_model_instances`) and concurrent big-file edits (`max_heavy_jobs`) machine-wide. Queued commands print a one-line status; exceeding `slot_wait_timeout_s` exits 1. Limits configurable in `~/.fastedit/limits/limits.json`; model windows are lazy — deterministic edits never build an engine.
+
+### Changed
+- **`--replace` wholesale swaps auto-re-indent to the target symbol's level (#23)**, relative body structure preserved (snippet already at that level is a byte-for-byte no-op); `--indent N` overrides.
+- **`--lines` mode conflict checks run on argv alone**, before any I/O; `--snippet` requirement is enforced with a clean exit-1 naming the one snippet-free form (`--lines FROM:TO --delete`).
+- **Refusals enriched (#12, #6):** keep-marker placement diagnostics, not-found messages list the remedy (nested-symbol recipe, literal `#N`, `--lines` fallback).
+
+### Fixed
+- **stdin can never hang (#9, #10, #11):** every `-` payload (snippet/content/edits) reads piped stdin once, bounded by `FASTEDIT_STDIN_TIMEOUT_S` (default 60s); a TTY is refused; stdin is retired after the read; a second `-` on one invocation refuses cleanly. `@path` detection (#7) and lost permission modes restored.
+- **Memory bounds (#12/#6, and prompt bounding 9ad3d77):** bounded LCS; every merge prompt is clipped before the model — 100MB single-line files can no longer explode to ~100GB of memory.
+- **JSDoc/doc-comment above a replaced symbol is no longer duplicated (#3); JSON key edits splice the pair value (or rename the key) instead of refusing or wiping siblings (#4); markdown tail drops detected and diff coverage fixed (#8).**
+- **Symbol addressing #5:** TS/JS `it()`/`test()`/`describe()` blocks, class constructors, and an `imports` anchor (`--after-imports`) are addressable symbols.
+- **Early-stop on repeated identical model rejections across the retry loop (#19/#21); honest no-op reporting (a blank-line-only difference says where and gives the `--lines` recipe, #16/#21) — a no-op never prints an applied-edit success line anymore.**
+- **Whole-line spaced keep-markers in a `--replace` snippet refuse instead of writing literal marker lines (#20).**
+- **`batch-edit --edits -` reads stdin through the bounded helper; multi-edit `--file-edits -` likewise (af49eeb/6b5e12a: per-session hub isolation via `FASTEDIT_HUB_DIR`).**
+- **Markdown/tail-coverage: a `--replace` snippet restating head+tail of a format symbol is accepted as the complete new text (deletions included, #24); anything else fails closed. Category-based early stop for section rewrites.**
+- **MLX env robustness: `import transformers` tolerated when a spec-less `mlx` stub or a half-broken transformers install raises on import — the model still loads (verbosity suppression degrades instead of crashing).**
+
 ## 0.5.0 — 2026-04-23
 
 ### Added

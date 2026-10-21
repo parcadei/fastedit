@@ -1,0 +1,1427 @@
+{
+  "languages": {
+    "actionscript": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ada": {
+      "detail": "F3 fixture verification: real ada snippet (tests/golden/ada) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 0.4,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "agda": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "apex": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "arduino": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "asm": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "astro": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "bash": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "beancount": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "bibtex": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "bicep": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "bitbake": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "bsl": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "c": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "c_sharp": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "cairo": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "capnp": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "chatito": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "clarity": {
+      "detail": "F3 fixture verification: real clarity snippet (tests/golden/clarity) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 0.91,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "clojure": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "cmake": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "cobol": {
+      "detail": "resolved; real per-language snippet parsed with zero error traits under fastedit's subprocess parse watchdog (PATHOLOGICAL_RECOVERY_GRAMMARS member \u2014 healthy-with-watchdog)",
+      "guarded_parse": true,
+      "probe_seconds": 0.11,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "comment": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "commonlisp": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "cpon": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "cpp": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "csharp": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "css": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "csv": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "cuda": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "d": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "dart": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "dockerfile": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "doxygen": {
+      "detail": "F3 fixture verification: real doxygen snippet (tests/golden/doxygen) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 8.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "dtd": {
+      "detail": "F3 fixture verification: real dtd snippet (tests/golden/dtd) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 9.28,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "elisp": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "elixir": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "elm": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "embeddedtemplate": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "erlang": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "fennel": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "firrtl": {
+      "detail": "F3 fixture verification: real firrtl snippet (tests/golden/firrtl) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 7.94,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "fish": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "fortran": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "fsharp": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "fsharp_signature": {
+      "detail": "F3 fixture verification: real fsharp_signature snippet (tests/golden/fsharp_signature) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 5.25,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "func": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "gdscript": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "gitattributes": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "gitcommit": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "gitignore": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "gleam": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "glsl": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "gn": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "go": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "gomod": {
+      "detail": "F3 fixture verification: real gomod snippet (tests/golden/gomod) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 4.81,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "gosum": {
+      "detail": "F3 fixture verification: real gosum snippet (tests/golden/gosum) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 4.92,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "graphql": {
+      "detail": "F3 fixture verification: real graphql snippet (tests/golden/graphql) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 0.18,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "groovy": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "gstlaunch": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "hack": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "hare": {
+      "detail": "F3 fixture verification: real hare snippet (tests/golden/hare) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 5.55,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "haskell": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "haxe": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "hcl": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "heex": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "hlsl": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "html": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "hyprlang": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ini": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ispc": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "janet": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "java": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "javascript": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "jsdoc": {
+      "detail": "F3 fixture verification: real jsdoc snippet (tests/golden/jsdoc) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.08,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "json": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "jsonnet": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "julia": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "kconfig": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "kdl": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "kotlin": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "latex": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "linkerscript": {
+      "detail": "F3 fixture verification: real linkerscript snippet (tests/golden/linkerscript) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.23,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "llvm": {
+      "detail": "F3 fixture verification: real llvm snippet (tests/golden/llvm) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.3,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "lua": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "luadoc": {
+      "detail": "F3 fixture verification: real luadoc snippet (tests/golden/luadoc) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 5.97,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "luap": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "luau": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "magik": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "make": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "markdown": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "markdown_inline": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "matlab": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "mermaid": {
+      "detail": "F3 fixture verification: real mermaid snippet (tests/golden/mermaid) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.34,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "meson": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "netlinx": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "nim": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ninja": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "nix": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "nqc": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "objc": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ocaml": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ocaml_interface": {
+      "detail": "F3 fixture verification: real ocaml_interface snippet (tests/golden/ocaml_interface) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 7.3,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "odin": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "org": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "pascal": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "pem": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "perl": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "pgn": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "php": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "po": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "pony": {
+      "detail": "F3 fixture verification: real pony snippet (tests/golden/pony) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 7.03,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "powershell": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "printf": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "prisma": {
+      "detail": "F3 fixture verification: real prisma snippet (tests/golden/prisma) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.85,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "properties": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "proto": {
+      "detail": "F3 fixture verification: real proto snippet (tests/golden/proto) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.62,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "psv": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "puppet": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "purescript": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "pymanifest": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "python": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "qmldir": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "qmljs": {
+      "detail": "F3 fixture verification: real qmljs snippet (tests/golden/qmljs) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.37,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "query": {
+      "detail": "F3 fixture verification: real query snippet (tests/golden/query) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.39,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "r": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "racket": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "re2c": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "readline": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "rego": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.07,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "requirements": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ron": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "rst": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ruby": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "rust": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "scala": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "scheme": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "scss": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "smali": {
+      "detail": "F3 fixture verification: real smali snippet (tests/golden/smali) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.45,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "smithy": {
+      "detail": "F3 fixture verification: real smithy snippet (tests/golden/smithy) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.38,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "solidity": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "sparql": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "sql": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "squirrel": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "starlark": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "svelte": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "swift": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "tablegen": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "tcl": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "terraform": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "test": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "thrift": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "toml": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "tsv": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "tsx": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "twig": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "typescript": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "typst": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "udev": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "ungrammar": {
+      "detail": "F3 fixture verification: real ungrammar snippet (tests/golden/ungrammar) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.17,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "uxntal": {
+      "detail": "F3 fixture verification: real uxntal snippet (tests/golden/uxntal) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 6.22,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "v": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "verilog": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "vhdl": {
+      "detail": "F3 fixture verification: real vhdl snippet (tests/golden/vhdl) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 7.47,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "vim": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "vue": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "wast": {
+      "detail": "F3 fixture verification: real wast snippet (tests/golden/wast) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 7.49,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "wat": {
+      "detail": "F3 fixture verification: real wat snippet (tests/golden/wat) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 7.59,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "wgsl": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.06,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "xcompose": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.05,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "xml": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "xml_dtd": {
+      "detail": "F3 fixture verification: real xml_dtd snippet (tests/golden/xml_dtd) parses with zero error traits \u2014 the F1 trivial probe lines were the limitation; a --force re-probe re-derives the trivial-probe verdict",
+      "probe_seconds": 0.18,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "yaml": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    },
+    "yuck": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "language_pack",
+      "status": "ok"
+    },
+    "zig": {
+      "detail": "resolved; probe snippet parsed with zero error traits",
+      "probe_seconds": 0.04,
+      "reason": null,
+      "served_by": "direct_wheel",
+      "status": "ok"
+    }
+  },
+  "pack": {
+    "module": "tree_sitter_language_pack",
+    "name_count": 173,
+    "version": "0.13.0"
+  },
+  "probe_version": 2,
+  "summary": {
+    "ok": 175,
+    "ok_names": [
+      "actionscript",
+      "ada",
+      "agda",
+      "apex",
+      "arduino",
+      "asm",
+      "astro",
+      "bash",
+      "beancount",
+      "bibtex",
+      "bicep",
+      "bitbake",
+      "bsl",
+      "c",
+      "c_sharp",
+      "cairo",
+      "capnp",
+      "chatito",
+      "clarity",
+      "clojure",
+      "cmake",
+      "cobol",
+      "comment",
+      "commonlisp",
+      "cpon",
+      "cpp",
+      "csharp",
+      "css",
+      "csv",
+      "cuda",
+      "d",
+      "dart",
+      "dockerfile",
+      "doxygen",
+      "dtd",
+      "elisp",
+      "elixir",
+      "elm",
+      "embeddedtemplate",
+      "erlang",
+      "fennel",
+      "firrtl",
+      "fish",
+      "fortran",
+      "fsharp",
+      "fsharp_signature",
+      "func",
+      "gdscript",
+      "gitattributes",
+      "gitcommit",
+      "gitignore",
+      "gleam",
+      "glsl",
+      "gn",
+      "go",
+      "gomod",
+      "gosum",
+      "graphql",
+      "groovy",
+      "gstlaunch",
+      "hack",
+      "hare",
+      "haskell",
+      "haxe",
+      "hcl",
+      "heex",
+      "hlsl",
+      "html",
+      "hyprlang",
+      "ini",
+      "ispc",
+      "janet",
+      "java",
+      "javascript",
+      "jsdoc",
+      "json",
+      "jsonnet",
+      "julia",
+      "kconfig",
+      "kdl",
+      "kotlin",
+      "latex",
+      "linkerscript",
+      "llvm",
+      "lua",
+      "luadoc",
+      "luap",
+      "luau",
+      "magik",
+      "make",
+      "markdown",
+      "markdown_inline",
+      "matlab",
+      "mermaid",
+      "meson",
+      "netlinx",
+      "nim",
+      "ninja",
+      "nix",
+      "nqc",
+      "objc",
+      "ocaml",
+      "ocaml_interface",
+      "odin",
+      "org",
+      "pascal",
+      "pem",
+      "perl",
+      "pgn",
+      "php",
+      "po",
+      "pony",
+      "powershell",
+      "printf",
+      "prisma",
+      "properties",
+      "proto",
+      "psv",
+      "puppet",
+      "purescript",
+      "pymanifest",
+      "python",
+      "qmldir",
+      "qmljs",
+      "query",
+      "r",
+      "racket",
+      "re2c",
+      "readline",
+      "rego",
+      "requirements",
+      "ron",
+      "rst",
+      "ruby",
+      "rust",
+      "scala",
+      "scheme",
+      "scss",
+      "smali",
+      "smithy",
+      "solidity",
+      "sparql",
+      "sql",
+      "squirrel",
+      "starlark",
+      "svelte",
+      "swift",
+      "tablegen",
+      "tcl",
+      "terraform",
+      "test",
+      "thrift",
+      "toml",
+      "tsv",
+      "tsx",
+      "twig",
+      "typescript",
+      "typst",
+      "udev",
+      "ungrammar",
+      "uxntal",
+      "v",
+      "verilog",
+      "vhdl",
+      "vim",
+      "vue",
+      "wast",
+      "wat",
+      "wgsl",
+      "xcompose",
+      "xml",
+      "xml_dtd",
+      "yaml",
+      "yuck",
+      "zig"
+    ],
+    "parse_degraded": 0,
+    "parse_degraded_names": [],
+    "resolvable": 175,
+    "total_names": 175,
+    "unresolvable": 0,
+    "unresolvable_by_reason": {},
+    "unresolvable_names": []
+  },
+  "wheel_added_names": [
+    "c_sharp",
+    "xml_dtd"
+  ]
+}

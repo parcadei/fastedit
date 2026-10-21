@@ -1,0 +1,5 @@
+<?xml version="1.0"?>
+<config>
+  <server>host1</server>
+  <cache enabled="true">redis</cache>
+</config>

@@ -8,6 +8,7 @@ check fails.
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import importlib.metadata
 import json
@@ -71,7 +72,8 @@ def _check_package_version(r: Report) -> None:
         r.add("fastedits package", OK, f"{current} (remote version check unavailable)")
         return
 
-    try:
+    # Version parsing is best-effort: any hiccup falls through to "up to date".
+    with contextlib.suppress(Exception):
         if _parse_version(latest) > _parse_version(current):
             r.add(
                 "fastedits package",
@@ -79,8 +81,6 @@ def _check_package_version(r: Report) -> None:
                 f"{current} → {latest} available (uv tool upgrade fastedits)",
             )
             return
-    except Exception:
-        pass
 
     r.add("fastedits package", OK, f"{current} (up to date)")
 
@@ -98,7 +98,7 @@ def _check_optional_dep(r: Report, label: str, module: str, extra: str) -> bool:
 def _check_backend_deps(r: Report) -> None:
     has_mlx = _check_optional_dep(r, "mlx backend", "mlx", "mlx")
     has_vllm = _check_optional_dep(r, "vllm backend", "vllm", "vllm")
-    has_mcp = _check_optional_dep(r, "mcp server (fastmcp)", "fastmcp", "mcp")
+    _check_optional_dep(r, "mcp server (fastmcp)", "fastmcp", "mcp")
 
     if not (has_mlx or has_vllm):
         r.add(
@@ -111,7 +111,7 @@ def _check_backend_deps(r: Report) -> None:
 def _check_model_cache(r: Report) -> None:
     try:
         from .model_download import DEFAULT_CACHE_DIR, MODELS
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 -- diagnostics: report-and-continue, the doctor must never crash on an optional-dep import failure
         r.add("model cache", WARN, f"skipped ({e})")
         return
 
@@ -155,7 +155,7 @@ def _check_mcp_config(r: Report) -> None:
             continue
         try:
             data = json.loads(path.read_text())
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 -- diagnostics: any read/parse failure is reported as WARN, never propagated (json can raise more than OSError/ValueError, e.g. RecursionError)
             r.add(label, WARN, f"{path} not parseable ({e})")
             continue
 
@@ -192,13 +192,54 @@ def _check_tldr(r: Report) -> None:
     version = "unknown"
     try:
         out = subprocess.run(
-            [path, "--version"], capture_output=True, text=True, timeout=3,
+            [path, "--version"], capture_output=True, text=True, timeout=3, check=False,
         )
         if out.returncode == 0 and out.stdout.strip():
             version = out.stdout.strip().split()[-1]
     except (subprocess.TimeoutExpired, OSError):
         pass
     r.add("tldr", OK, f"{path} (v{version})")
+
+
+def _check_resource_hub(r: Report) -> None:
+    """The global resource governor's limits + live holders (read-only).
+
+    Diagnostics, never a gate: a malformed limits.json or an unreadable hub
+    directory is a WARN row (the governor itself fails loud at acquisition
+    time; here the report must survive any hub state). Holders are listed
+    one per row — pid, slot, target file — so a stuck run can be identified
+    (and killed) from this report alone.
+    """
+    from . import resource_hub
+
+    try:
+        limits = resource_hub.load_limits()
+    except ValueError as e:
+        r.add("limits", WARN, f"malformed limits: {e}")
+        return
+    r.add(
+        "limits",
+        OK,
+        f"max_model_instances={limits.max_model_instances} "
+        f"max_heavy_jobs={limits.max_heavy_jobs} "
+        f"heavy_file_bytes={limits.heavy_file_bytes} "
+        f"queue_wait={limits.slot_wait_timeout_s:g}s",
+    )
+    try:
+        holders = resource_hub.read_hub_state()
+    except OSError as e:
+        r.add("hub state", WARN, f"unreadable hub dir: {e}")
+        return
+    if not holders:
+        r.add("active holders", OK, "none")
+        return
+    for h in holders:
+        file_note = f" file={h.get('file')}" if h.get("file") else ""
+        r.add(
+            f"{h['kind']}-{h['slot']}",
+            OK,
+            f"pid={h.get('pid')} since epoch {h.get('started_epoch')}{file_note}",
+        )
 
 
 def run_doctor() -> int:
@@ -218,6 +259,8 @@ def run_doctor() -> int:
     _check_mcp_config(r)
     r.section("helpers")
     _check_tldr(r)
+    r.section("resource hub")
+    _check_resource_hub(r)
 
     print()
     if r.failed_required:

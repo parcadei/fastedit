@@ -1,0 +1,16 @@
+body {
+  color: #333;
+  margin: 0 auto;
+}
+
+.header {
+  font-weight: bold;
+}
+
+.nav {
+  display: flex;
+}
+
+.footer {
+  padding: 4px;
+}

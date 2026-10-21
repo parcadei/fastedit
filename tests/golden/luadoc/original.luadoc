@@ -1,0 +1,2 @@
+@class Point
+@field x number the x coordinate

@@ -1,0 +1,8 @@
+name: fastedit
+version: 0.5.0
+
+license: MIT
+
+database:
+  host: localhost
+  port: 5432

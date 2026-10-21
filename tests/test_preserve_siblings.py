@@ -450,7 +450,14 @@ public class Cache {
 def test_batch_edit_mixed_preserve_siblings(tmp_path):
     """First edit: `replace=Store` with preserve_siblings=True — narrow edit
     to Store's field + ctor, preserving get/set. Second edit: plain
-    `replace=Cache` full replacement (no preserve_siblings needed)."""
+    `replace=Cache` full replacement (no preserve_siblings needed).
+
+    UPDATED (preserve-by-default, Step 2): the Cache snippet carries the
+    documented keep-marker. Without it, the LHS-only field rewrite
+    (``private int size = 100;`` vs the preserved ``private int size =
+    10;``) is an ambiguous rewrite that deterministic_edit declines
+    (item 6); with the marker the mid-section key replacement (v0.2.3
+    contract) applies it with zero model tokens."""
     file_path = tmp_path / "Multi.java"
     file_path.write_text(BATCH_ORIGINAL)
 
@@ -460,7 +467,12 @@ def test_batch_edit_mixed_preserve_siblings(tmp_path):
         preserve_siblings=True,
     )
     edit2 = BatchEdit(
-        snippet="public class Cache {\n    private int size = 100;\n}\n",
+        snippet=(
+            "public class Cache {\n"
+            "    private int size = 100;\n"
+            "    // ... existing code ...\n"
+            "}\n"
+        ),
         replace="Cache",
     )
 
@@ -552,3 +564,93 @@ def test_preserve_siblings_retains_blank_lines_between_siblings(tmp_path):
     # Redundant explicit checks on blank-line presence:
     assert "    }\n\n    fun get(" in out
     assert "    }\n\n    fun size(" in out
+
+
+# ---------------------------------------------------------------------------
+# 8. Marker stripping uses the shared LINE-ANCHORED predicate (B15)
+# ---------------------------------------------------------------------------
+
+JAVA_MARKER_COMMENT_ORIGINAL = """\
+public class Store {
+    private int count;
+
+    public int getCount() {
+        return count;
+    }
+
+    public void setCount(int value) {
+        this.count = value;
+    }
+}
+"""
+
+
+def test_preserve_siblings_keeps_comment_matching_legacy_marker_regex(tmp_path):
+    """A real comment that the loose legacy ``_MARKER_RE`` regex matches is
+    CONTENT per the unified line-anchored contract (B15) and must survive.
+
+    ``// ... rest of the class stays ...`` is not an exact marker phrase, so
+    ``markers.is_marker_line`` returns False — but ``_MARKER_RE`` (kept
+    importable for backward compatibility only; "no merge-semantic decision
+    may use it directly") matched it and silently dropped the line from the
+    merge output.
+    """
+    snippet = """\
+public class Store {
+    private int count;
+
+    public int getCount() {
+        return count;
+    }
+    // ... rest of the class stays ...
+}
+"""
+    file_path = tmp_path / "Store.java"
+    file_path.write_text(JAVA_MARKER_COMMENT_ORIGINAL)
+
+    result = chunked_merge(
+        original_code=JAVA_MARKER_COMMENT_ORIGINAL,
+        snippet=snippet,
+        file_path=str(file_path),
+        merge_fn=_no_model,
+        language="java",
+        replace="Store",
+        preserve_siblings=True,
+    )
+
+    assert "// ... rest of the class stays ..." in result.merged_code
+    # The unmentioned sibling is still preserved verbatim.
+    assert "public void setCount(int value) {" in result.merged_code
+
+
+def test_preserve_siblings_language_hint_resolves_suffixless_path(tmp_path):
+    """The caller's ``language=`` hint rides along (B3), like the after= and
+    replace= fast paths.
+
+    With no hint, a suffix-less path (``.txt``) resolves no grammar and the
+    AST map comes back empty — the op failed loudly with "Symbol not found"
+    even though the caller knew the language.
+    """
+    snippet = """\
+public class Store {
+    private int count;
+
+    public int getCount() {
+        return count;
+    }
+}
+"""
+    file_path = tmp_path / "Store.txt"
+    file_path.write_text(JAVA_MARKER_COMMENT_ORIGINAL)
+
+    result = chunked_merge(
+        original_code=JAVA_MARKER_COMMENT_ORIGINAL,
+        snippet=snippet,
+        file_path=str(file_path),
+        merge_fn=_no_model,
+        language="java",
+        replace="Store",
+        preserve_siblings=True,
+    )
+
+    assert "public void setCount(int value) {" in result.merged_code

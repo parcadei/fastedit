@@ -37,7 +37,6 @@ from fastedit.inference.caller_safety import (
 )
 from fastedit.inference.rename import do_rename_ast
 
-
 TLDR_AVAILABLE = shutil.which("tldr") is not None
 
 
@@ -145,7 +144,7 @@ def test_adv_substring_collision_get_vs_getattr(tmp_path: Path):
     y = getattr(None, "x", None)
     """))
 
-    new_content, count, _ = do_rename_ast(path, "get", "fetch")
+    new_content, _count, _ = do_rename_ast(path, "get", "fetch")
 
     # `def get_all` must stay; `getattr` (a Python builtin) must stay.
     assert "def get_all" in new_content

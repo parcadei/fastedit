@@ -1,0 +1,5 @@
+/**
+ * Adds numbers.
+ * @param {number} x first
+ * @returns {number} sum
+ */

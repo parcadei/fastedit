@@ -1,0 +1,22 @@
+{
+  "language": "markdown_inline",
+  "ext": "md_inline",
+  "filename": "original.md_inline",
+  "symbol_semantics": "the markdown INLINE sub-grammar (emphasis/links inside one block of prose — no symbol notion at all); fastedit anchoring: none yet. Served by the hard-dependency tree_sitter_markdown wheel's inline_language entry, so this fixture needs no pack",
+  "ops": [],
+  "census_fixture": true,
+  "unsupported": [
+    {
+      "op": "insert_after",
+      "reason": "fastedit's declarative symbol anchoring (_FUNCTION_LIKE_NODE_TYPES / _CLASS_LIKE_NODE_TYPES / _CONST_LIKE_NODE_TYPES / _FORMAT_SYMBOL_SPECS in src/fastedit/inference/ast_utils.py) has no row for this language yet: the in-memory symbol map is empty and the op fails loud with 'Symbol not found' rather than guessing an anchor. Adding the one declarative anchoring row and flipping this to an exercised golden op is future F-series work — declared here, never silent."
+    },
+    {
+      "op": "replace_symbol",
+      "reason": "fastedit's declarative symbol anchoring (_FUNCTION_LIKE_NODE_TYPES / _CLASS_LIKE_NODE_TYPES / _CONST_LIKE_NODE_TYPES / _FORMAT_SYMBOL_SPECS in src/fastedit/inference/ast_utils.py) has no row for this language yet: the in-memory symbol map is empty and the op fails loud with 'Symbol not found' rather than guessing an anchor. Adding the one declarative anchoring row and flipping this to an exercised golden op is future F-series work — declared here, never silent."
+    },
+    {
+      "op": "delete_symbol",
+      "reason": "fastedit's declarative symbol anchoring (_FUNCTION_LIKE_NODE_TYPES / _CLASS_LIKE_NODE_TYPES / _CONST_LIKE_NODE_TYPES / _FORMAT_SYMBOL_SPECS in src/fastedit/inference/ast_utils.py) has no row for this language yet: the in-memory symbol map is empty and the op fails loud with 'Symbol not found' rather than guessing an anchor. Adding the one declarative anchoring row and flipping this to an exercised golden op is future F-series work — declared here, never silent."
+    }
+  ]
+}

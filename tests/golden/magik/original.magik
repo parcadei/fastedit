@@ -1,0 +1,3 @@
+_method point.add(other)
+	_return _self.x + other.x
+_endmethod

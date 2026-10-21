@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import textwrap
 
-import pytest
-
 from fastedit.inference.rename import (
     _collect_skip_ranges,
     _in_skip_zone,
     do_rename,
 )
-
 
 # ---------------------------------------------------------------------------
 # _in_skip_zone tests
@@ -122,7 +119,7 @@ class TestDoRename:
 
         x = get()
         """)
-        renamed, count, skipped = do_rename(code, "get", "fetch")
+        renamed, count, _skipped = do_rename(code, "get", "fetch")
         assert "def fetch():" in renamed
         assert "x = fetch()" in renamed
         assert "def get():" not in renamed
@@ -139,7 +136,7 @@ class TestDoRename:
 
         getter = get()
         """)
-        renamed, count, skipped = do_rename(code, "get", "fetch")
+        renamed, count, _skipped = do_rename(code, "get", "fetch")
         assert "def fetch():" in renamed
         assert "def get_all():" in renamed  # NOT renamed
         assert "getter = fetch()" in renamed  # get() call is renamed
@@ -154,7 +151,7 @@ class TestDoRename:
         msg = "call get here"
         result = get()
         """)
-        renamed, count, skipped = do_rename(code, "get", "fetch", language="python")
+        renamed, _count, skipped = do_rename(code, "get", "fetch", language="python")
         assert 'msg = "call fetch here"' not in renamed  # string preserved
         assert "result = fetch()" in renamed
         assert skipped >= 1
@@ -168,7 +165,7 @@ class TestDoRename:
 
         x = get()
         """)
-        renamed, count, skipped = do_rename(code, "get", "fetch", language="python")
+        renamed, _count, skipped = do_rename(code, "get", "fetch", language="python")
         assert "# call get to retrieve data" in renamed  # comment preserved
         assert "def fetch():" in renamed
         assert "x = fetch()" in renamed
@@ -193,7 +190,7 @@ class TestDoRename:
 
         result = calc(1, 2)
         """)
-        renamed, count, skipped = do_rename(code, "calc_inner", "compute")
+        renamed, count, _skipped = do_rename(code, "calc_inner", "compute")
         assert renamed.count("compute") == 3  # 2 calls + 1 def
         assert "calc_inner" not in renamed
         assert count == 3
@@ -241,7 +238,7 @@ class TestDoRename:
         y = "get"
         z = get()
         """)
-        renamed, count, skipped = do_rename(code, "get", "fetch", language="python")
+        _renamed, count, skipped = do_rename(code, "get", "fetch", language="python")
         assert count == 2       # two get() calls
         assert skipped == 2     # comment + string
 
@@ -252,14 +249,14 @@ class TestDoRename:
             def bar(self):
                 return bar()
         """)
-        renamed, count, skipped = do_rename(code, "bar", "baz")
+        renamed, _count, _skipped = do_rename(code, "bar", "baz")
         assert "    def baz(self):" in renamed
         assert "        return baz()" in renamed
 
     def test_rename_with_special_regex_chars(self):
         """Names with characters that are special in regex are handled."""
         code = "x = __init__()\ny = __init__()\n"
-        renamed, count, skipped = do_rename(code, "__init__", "__setup__")
+        renamed, count, _skipped = do_rename(code, "__init__", "__setup__")
         assert renamed.count("__setup__") == 2
         assert "__init__" not in renamed
         assert count == 2
@@ -274,7 +271,7 @@ class TestDoRename:
     def test_unicode_content_preserved(self):
         """Unicode characters in the file are preserved during rename."""
         code = "# Calcul du co\u00fbt\ndef get():\n    return '\u00e9l\u00e8ve'\n\nx = get()\n"
-        renamed, count, skipped = do_rename(code, "get", "fetch")
+        renamed, _count, _skipped = do_rename(code, "get", "fetch")
         assert "co\u00fbt" in renamed
         assert "\u00e9l\u00e8ve" in renamed
         assert "def fetch():" in renamed

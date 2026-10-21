@@ -30,7 +30,6 @@ from fastedit.inference.caller_safety import (
 )
 from fastedit.inference.rename import do_rename_ast
 
-
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
@@ -446,7 +445,7 @@ def test_m1_rename_ast_happy_path(lang_key: str, tmp_path: Path):
     path = root / f"mod{spec.file_ext}"
     path.write_text(spec.rename_source)
 
-    new_content, count, skipped = do_rename_ast(path, spec.symbol, "newName")
+    new_content, count, _skipped = do_rename_ast(path, spec.symbol, "newName")
 
     assert count >= 1, (
         f"[{lang_key}] expected >=1 replacement, got {count}. "
@@ -605,7 +604,7 @@ _SIGCHG_EDITS: dict[str, tuple[str, str]] = {
     "typescript": (
         "export function foo(a: number): number {\n  return a;\n}\n",
         "export function foo(a: number, b: number): number {\n"
-        "  return a + b;\n}\n",
+        + "  return a + b;\n}\n",
     ),
     "javascript": (
         "export function foo(a) {\n  return a;\n}\n",
@@ -621,15 +620,15 @@ _SIGCHG_EDITS: dict[str, tuple[str, str]] = {
     ),
     "java": (
         "public class X {\n"
-        "    public static int foo(int a) {\n"
-        "        return a;\n"
-        "    }\n"
-        "}\n",
+        + "    public static int foo(int a) {\n"
+        + "        return a;\n"
+        + "    }\n"
+        + "}\n",
         "public class X {\n"
-        "    public static int foo(int a, int b) {\n"
-        "        return a + b;\n"
-        "    }\n"
-        "}\n",
+        + "    public static int foo(int a, int b) {\n"
+        + "        return a + b;\n"
+        + "    }\n"
+        + "}\n",
     ),
     "kotlin": (
         "fun foo(a: Int): Int {\n    return a\n}\n",
@@ -649,15 +648,15 @@ _SIGCHG_EDITS: dict[str, tuple[str, str]] = {
     ),
     "c_sharp": (
         "public class X {\n"
-        "    public static int Foo(int a) {\n"
-        "        return a;\n"
-        "    }\n"
-        "}\n",
+        + "    public static int Foo(int a) {\n"
+        + "        return a;\n"
+        + "    }\n"
+        + "}\n",
         "public class X {\n"
-        "    public static int Foo(int a, int b) {\n"
-        "        return a + b;\n"
-        "    }\n"
-        "}\n",
+        + "    public static int Foo(int a, int b) {\n"
+        + "        return a + b;\n"
+        + "    }\n"
+        + "}\n",
     ),
     "cpp": (
         "int foo(int a) {\n    return a;\n}\n",

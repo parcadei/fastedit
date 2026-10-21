@@ -13,17 +13,14 @@ These tests do NOT require tldr or tree-sitter to be installed.
 
 import textwrap
 
-import pytest
-
 from fastedit.inference.snippet_analysis import (
-    _regex_extract_names,
-    _extract_snippet_names,
     _MARKER_RE,
+    _extract_snippet_names,
     _has_import_changes,
-    _split_snippet,
     _merge_overlapping_regions,
+    _regex_extract_names,
+    _split_snippet,
 )
-
 
 # ---------------------------------------------------------------------------
 # _regex_extract_names

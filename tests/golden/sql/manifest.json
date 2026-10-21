@@ -1,0 +1,64 @@
+{
+  "language": "sql",
+  "ext": "sql",
+  "filename": "original.sql",
+  "symbol_semantics": "CREATE statements that define a schema object (table / view / materialized view / index), named by the object name; DML (SELECT/INSERT/UPDATE) is an operation, never a symbol",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "users",
+      "snippet": "CREATE TABLE sessions (\n  id INT PRIMARY KEY\n);\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 1,
+        "anchor_end_line": 4
+      },
+      "expected": "expected_insert_after_users.sql"
+    },
+    {
+      "op": "replace_symbol",
+      "symbol": "orders",
+      "snippet": "CREATE TABLE orders (\n  id INT PRIMARY KEY,\n  user_id INT NOT NULL\n);\n",
+      "path": "direct_swap",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 6,
+        "end_line": 9
+      },
+      "expected": "expected_replace_symbol_orders.sql"
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "idx_orders_user",
+      "snippet": null,
+      "path": null,
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 11,
+        "end_line": 11
+      },
+      "expected": "expected_delete_symbol_idx_orders_user.sql"
+    }
+  ],
+  "gigo": {
+    "original": "original_gigo.sql",
+    "defect": "broken CREATE TABLE (missing closing paren) in an unrelated statement — preserved byte-exact",
+    "defect_lines": [
+      7,
+      9
+    ],
+    "op": {
+      "op": "insert_after",
+      "symbol": "users",
+      "snippet": "CREATE TABLE sessions (\n  id INT PRIMARY KEY\n);\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 1,
+        "anchor_end_line": 3
+      },
+      "expected": "expected_gigo_users.sql"
+    }
+  }
+}

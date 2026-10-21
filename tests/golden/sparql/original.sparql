@@ -1,0 +1,5 @@
+SELECT ?name
+WHERE {
+    ?person a foaf:Person .
+    ?person foaf:name ?name .
+}

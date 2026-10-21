@@ -1,0 +1,3 @@
+config FASTEDIT
+	bool "Enable fastedit"
+	default y

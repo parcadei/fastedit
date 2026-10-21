@@ -1,0 +1,10 @@
+name: fastedit
+version: 0.5.0
+database:
+  host: localhost
+
+cache:
+  enabled: true
+
+broken: [unclosed
+  - bad

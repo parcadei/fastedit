@@ -33,6 +33,7 @@ Run with: pytest tests/test_deterministic_benchmark.py -v -s
 from __future__ import annotations
 
 import pytest
+
 from fastedit.inference.text_match import deterministic_edit
 
 

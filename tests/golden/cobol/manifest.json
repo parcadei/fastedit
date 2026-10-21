@@ -1,0 +1,33 @@
+{
+  "language": "cobol",
+  "ext": "cob",
+  "filename": "original.cob",
+  "symbol_semantics": "program_definition (named by its PROGRAM-ID, span = the whole compilation unit) and paragraph_header (named by the header text minus its terminating period; the grammar brackets ONLY the header line — statements are siblings inside procedure_division — so a paragraph anchor spans its header line alone). after=<PROGRAM-ID> therefore appends at EOF: the one insert shape whose splice cannot mangle paragraph ownership",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "HELLO",
+      "snippet": "       NEW-PARA.\n           DISPLAY \"ADDED\".\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 1,
+        "anchor_end_line": 10
+      },
+      "expected": "expected_insert_after_HELLO.cob"
+    }
+  ],
+  "requires_wheel": "tree_sitter_language_pack",
+  "census_note": "census (F1) verdict was unresolvable/timeout: the grammar resolves instantly and parses REAL cobol in 0.0s, but its error recovery LOOPS FOREVER on unrecoverable input — every trivial probe line wedges the parse. G1a bounded the grammar behind the subprocess parse watchdog (PATHOLOGICAL_RECOVERY_GRAMMARS); the v2 census probe feeds guarded grammars their real snippet ONLY (a wedge costs the whole probe) and this program parses with zero error traits under the watchdog — healthy-with-watchdog, verdict ok. G1b adds declarative anchoring (program_definition/paragraph_header) and this exercised op",
+  "census_fixture": true,
+  "unsupported": [
+    {
+      "op": "replace_symbol",
+      "reason": "G1b anchoring resolves the spans (program = whole compilation unit; paragraph = its header line only), but a program replace is a whole-file rewrite and a paragraph replace would splice around the header while the body lines are siblings of it — declared here, not exercised in the deterministic golden scope"
+    },
+    {
+      "op": "delete_symbol",
+      "reason": "same span shapes as replace_symbol: deleting a paragraph header would promote its body into the previous paragraph (the grammar brackets only the header), and deleting the program deletes the file — declared here, not exercised in the golden scope"
+    }
+  ]
+}

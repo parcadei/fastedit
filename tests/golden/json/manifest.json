@@ -1,0 +1,58 @@
+{
+  "language": "json",
+  "ext": "json",
+  "filename": "original.json",
+  "symbol_semantics": "object pairs (keys), named by the key; nested objects' pairs become nested symbols. JSON comma semantics constrain insertion anchors: an inserted pair must carry its own trailing comma and the anchor pair must already have one (the last pair cannot anchor an insert)",
+  "ops": [
+    {
+      "op": "insert_after",
+      "symbol": "name",
+      "snippet": "  \"license\": \"MIT\",\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 2,
+        "anchor_end_line": 2
+      },
+      "expected": "expected_insert_after_name.json"
+    },
+    {
+      "op": "delete_symbol",
+      "symbol": "version",
+      "snippet": null,
+      "path": null,
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "start_line": 3,
+        "end_line": 3
+      },
+      "expected": "expected_delete_symbol_version.json"
+    }
+  ],
+  "unsupported": [
+    {
+      "op": "replace_symbol",
+      "reason": "no deterministic path can re-define a JSON pair: a bare pair is not a standalone-parsable JSON document (the direct-swap gate's parse precondition fails), and the text-match editor cannot justify a same-key value rewrite — JSON's `key: value` separator is not an assignment (`=`), so the pair has no replacement key, and a marker-free rewrite of a preserved line is declined as ambiguous. JSON value updates are served by the model path, which is out of the deterministic golden matrix's scope"
+    }
+  ],
+  "gigo": {
+    "original": "original_gigo.json",
+    "defect": "missing comma between two members — preserved byte-exact",
+    "defect_lines": [
+      2,
+      3
+    ],
+    "op": {
+      "op": "insert_after",
+      "symbol": "version",
+      "snippet": "  \"license\": \"MIT\",\n",
+      "path": "fast_path",
+      "prepend_signature_lines": 0,
+      "oracle": {
+        "anchor_start_line": 3,
+        "anchor_end_line": 3
+      },
+      "expected": "expected_gigo_version.json"
+    }
+  }
+}

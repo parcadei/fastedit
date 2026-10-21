@@ -8,7 +8,6 @@ import pytest
 
 from fastedit.inference.symbols import delete_symbol, move_symbol
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -247,7 +246,7 @@ class TestMoveSymbol:
         """new_lines reflects the position after the move."""
         result = move_symbol(three_funcs_file, "alpha", after="gamma")
 
-        new_start, new_end = result.new_lines
+        new_start, _new_end = result.new_lines
         # alpha was originally lines 1-2; after move it should be after gamma
         assert new_start > 4, f"Expected alpha to move past line 4, got {new_start}"
 

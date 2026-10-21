@@ -21,21 +21,86 @@ dependencies = [
     "tree-sitter-c-sharp>=0.23.0",
     "tree-sitter-php>=0.23.0",
     "tree-sitter-elixir>=0.3.0",
+    # B2 core formats (Step B2 of the implementation plan): every wheel was
+    # probe-verified against tree-sitter 0.25.x (imports + parses a
+    # representative snippet; deliberately-broken snippet yields diagnostics)
+    # BEFORE being pinned here. These grammars carry no tree-sitter pin of
+    # their own (only an optional `core` extra), so they resolve cleanly
+    # alongside tree-sitter>=0.23.
+    "tree-sitter-html>=0.23.0",
+    "tree-sitter-xml>=0.7.0",
+    "tree-sitter-markdown>=0.5.0",
+    "tree-sitter-json>=0.24.0",
+    "tree-sitter-yaml>=0.7.0",
+    "tree-sitter-css>=0.24.0",
+    "tree-sitter-bash>=0.24.0",
+    "tree-sitter-toml>=0.7.0",
+    "tree-sitter-sql>=0.3.0",
+    "tree-sitter-dockerfile>=0.2.0",
     "openai>=1.50.0",
     "rich>=13.0.0",
     "huggingface-hub>=0.20.0",
 ]
 
 [project.optional-dependencies]
+# Platform-marked (G2 audit): mlx/mlx-lm are macOS (Apple silicon) only --
+# their wheels carry no Linux/Windows builds and the sdist cannot build
+# there (Metal). The marker keeps `pip install fastedits[mlx]` resolvable
+# everywhere: identical on macOS, a no-op instead of a build failure
+# elsewhere. Plain `pip install fastedit` never installs extras, so the
+# default install was always safe.
 mlx = [
-    "mlx>=0.18.0",
-    "mlx-lm>=0.18.0",
+    "mlx>=0.18.0; sys_platform == 'darwin'",
+    "mlx-lm>=0.18.0; sys_platform == 'darwin'",
 ]
+# Same remedy, inverted platform: vllm publishes Linux wheels only (no
+# macOS/Windows builds), so the extra resolves only on Linux.
 vllm = [
-    "vllm>=0.6.0",
+    "vllm>=0.6.0; sys_platform == 'linux'",
 ]
 mcp = [
     "fastmcp>=0.4.0",
+]
+# B2: the full verified grammar set plus the aggregate language pack. This
+# extra is what takes fastedit from the ~35 grammars of direct wheels to
+# hundreds of formats: tree-sitter-language-pack bundles ~170 grammars
+# offline. The <1.0 cap is deliberate — the 1.x line rewrote the pack as a
+# thin Rust runtime that DOWNLOADS grammar shared libraries from the network
+# on first use (verified: get_language("cobol") fetched a 13 MB dylib into
+# ~/Library/Caches), which violates fastedit's hermetic/offline policy. The
+# 0.10+ line bundles everything in the wheel and requires tree-sitter>=0.25.2
+# (compatible with this project's tree-sitter>=0.23.0 resolution).
+all-grammars = [
+    "tree-sitter-html>=0.23.0",
+    "tree-sitter-xml>=0.7.0",
+    "tree-sitter-markdown>=0.5.0",
+    "tree-sitter-json>=0.24.0",
+    "tree-sitter-yaml>=0.7.0",
+    "tree-sitter-css>=0.24.0",
+    "tree-sitter-bash>=0.24.0",
+    "tree-sitter-toml>=0.7.0",
+    "tree-sitter-sql>=0.3.0",
+    "tree-sitter-dockerfile>=0.2.0",
+    # Verified wheels without extension wiring by default (installed via this
+    # extra only; `language="scala"` etc. resolve when present, and
+    # detect_language stays honest for default installs — see ast_analyzer).
+    "tree-sitter-scala>=0.23.0",
+    "tree-sitter-lua>=0.5.0",
+    "tree-sitter-perl>=2.0.0",
+    "tree-sitter-julia>=0.23.0",
+    "tree-sitter-zig>=1.0.0",
+    "tree-sitter-svelte>=1.0.0",
+    "tree-sitter-graphql>=0.1.0",
+    "tree-sitter-hcl>=1.2.0",
+    "tree-sitter-make>=1.1.0",
+    "tree-sitter-nix>=0.1.0",
+    "tree-sitter-language-pack>=0.10.0,<1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1",
+    "ruff>=0.16.6",
 ]
 
 [project.scripts]
@@ -47,12 +112,35 @@ fastedit-mcp = "fastedit.mcp_server:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.ruff]
+# B3: tests/golden/** are committed DATA fixtures (original + expected files
+# in each language's own syntax) produced by tests/golden/_generate.py.
+# They are not linted code — the GIGO set deliberately contains files with
+# pre-existing syntax defects (req. 9 EDIT-NOT-CORRECT), which ruff would
+# flag as invalid-syntax.
+extend-exclude = ["tests/golden"]
+
 [tool.hatch.build.targets.wheel]
+# Hatchling ships every non-gitignored file under the package dir, including
+# the packaged agent skill at src/fastedit/skill/SKILL.md — the copy
+# `fastedit init` stages for `npx skills add`. It is auto-synced (one-way,
+# skills/ -> src/) from the single source of truth skills/fastedit/SKILL.md
+# by tests/conftest.py at every test-session start — a build-time
+# force-include cannot replace the copy because editable installs anchor
+# importlib.resources at src/ (why two copies: the skill files' headers) —
+# and byte-identity is asserted in tests/test_fastedit_skill.py.
 packages = ["src/fastedit"]
 
 [tool.hatch.build.targets.sdist]
 include = [
     "src/fastedit/**/*.py",
+    # The packaged agent skill: a real file auto-synced (one-way) from the
+    # single source of truth skills/fastedit/SKILL.md by tests/conftest.py at
+    # every test-session start (byte-identity asserted in
+    # tests/test_fastedit_skill.py). The sdist include list is an explicit
+    # whitelist, so without this entry an sdist-built install would ship no
+    # skill for `fastedit init` to stage.
+    "src/fastedit/skill/SKILL.md",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",
@@ -79,3 +167,16 @@ exclude = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Runtime tiers (implementation plan §0): `llm` loads the real trained
+# fastedit model (minutes per session); `stress` runs 100MB-class files
+# (minutes each) and additionally requires FASTEDIT_RUN_STRESS=1.
+# Default-tier policy: MARKER DESELECTION via addopts, so `uv run pytest -q`
+# stays at the hermetic suite. The CLI `-m llm` overrides this because
+# pytest prepends addopts to the command line and argparse's `store` action
+# lets the later (CLI) occurrence win — heavy tiers are run explicitly with
+# `uv run pytest -m llm`.
+addopts = "-m 'not llm and not stress'"
+markers = [
+    "llm: loads the real trained fastedit model via tests/llm_fixtures.py — minutes-scale, never fake; run explicitly with `uv run pytest -m llm`.",
+    "stress: 100MB-class stress tests — minutes each; additionally requires FASTEDIT_RUN_STRESS=1.",
+]

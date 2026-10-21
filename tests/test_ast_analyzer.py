@@ -1,13 +1,14 @@
 """Tests for the AST analyzer across multiple languages."""
 
 import pytest
+
 from fastedit.data_gen.ast_analyzer import (
     analyze_file,
+    count_ast_nodes,
     detect_language,
-    validate_parse,
     get_node_at_lines,
     parse_code,
-    count_ast_nodes,
+    validate_parse,
 )
 
 # -- Language detection --
@@ -26,7 +27,12 @@ def test_detect_go():
     assert detect_language("main.go") == "go"
 
 def test_detect_unknown():
-    assert detect_language("README.md") is None
+    # B2 triage: README.md is no longer "unknown" — .md maps to the
+    # markdown grammar (a hard dependency). The plain-text path here is
+    # pinned with an extension that has no tree-sitter wheel on PyPI
+    # (probed in B2): reStructuredText.
+    assert detect_language("README.rst") is None
+    assert detect_language("notes.txt") is None
 
 
 # -- Python analysis --
